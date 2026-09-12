@@ -64,6 +64,10 @@ router.post(
 // =====================================================
 router.post(
   "/verify-email-otp",
+  (req, res, next) => {
+    console.log("🔥🔥🔥 ROUTE ATTEINTE");
+    next();
+  },
   asyncHandler(verifyEmailOtp)
 );
 
@@ -102,6 +106,7 @@ router.post(
 // Déconnexion
 router.post(
   "/logout",
+  /*protect,*/
   asyncHandler(logout)
 );
 

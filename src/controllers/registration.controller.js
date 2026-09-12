@@ -826,13 +826,13 @@ export const verifyEmailOtp = async (
   // ---------------------------------------------------
   // 2. Find OTP
   // ---------------------------------------------------
-
+console.log("rachide:",normalizedEmail)
   const otpRecord =
     await EmailOtp.findValid({
       email: normalizedEmail,
       otp_code: String(otp_code).trim(),
     });
-
+console.log("rachide:",otpRecord)
   if (!otpRecord) {
     throw createError(
       "Code OTP invalide ou expiré.",
@@ -899,7 +899,7 @@ export const verifyEmailOtp = async (
   // ===================================================
   // SECONDARY ADMIN
   // ===================================================
-
+console.log("MARIE: ",pending.type)
   if (pending.type === "secondary_admin") {
 
     let userId;
@@ -967,7 +967,7 @@ export const verifyEmailOtp = async (
 
           user_id: userId,
 
-          company_status: "PENDING",
+          company_status: "pending",
         });
 
       companyId = Number(company?.id);

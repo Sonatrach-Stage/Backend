@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/usermodel.js";
 import Role from "../models/rolemodel.js";
 import RefreshToken from "../models/refresh_tokenmodel.js";
+
 import generateTokens from "../utils/generateTokens.js";
 
 // =====================================================
@@ -33,7 +34,6 @@ export const login = async (req, res) => {
     const error = new Error(
       "Votre compte n'est pas encore actif."
     );
-
     error.statusCode = 403;
     throw error;
   }
@@ -59,13 +59,12 @@ export const login = async (req, res) => {
 
   const roles = await Role.getUsersRole(user.id);
 
-  const role = roles[0]?.role_name || null;
+  const role = roles?.name || null;
 
   if (!role) {
     const error = new Error(
       "Aucun rôle n'est associé à ce compte."
     );
-
     error.statusCode = 403;
     throw error;
   }
@@ -97,20 +96,53 @@ export const login = async (req, res) => {
   });
 };
 
+
 // =====================================================
 // LOGOUT
 // =====================================================
 
 export const logout = async (req, res) => {
-  const { refreshToken } = req.body;
 
   // -----------------------------------------
-  // Vérifier la présence du refresh token
+  // Récupérer le Authorization header
   // -----------------------------------------
 
+  const authHeader = req.headers.authorization;
+console.log("/////////////",authHeader)
+  if (!authHeader) {
+    const error = new Error(
+      "Authorization header requis."
+    );
+
+    error.statusCode = 401;
+    throw error;
+  }
+
+  // -----------------------------------------
+  // Vérifier le format Bearer
+  // -----------------------------------------
+
+  if (!authHeader.startsWith("Bearer ")) {
+    const error = new Error(
+      "Format du header invalide. Utilisez : Bearer <refreshToken>"
+    );
+
+    error.statusCode = 401;
+    throw error;
+  }
+
+  // -----------------------------------------
+  // Extraire le refresh token
+  // -----------------------------------------
+
+  const refreshToken = authHeader.substring(7).trim();
+console.log("//////////////",refreshToken);
   if (!refreshToken) {
-    const error = new Error("Refresh token requis.");
-    error.statusCode = 400;
+    const error = new Error(
+      "Refresh token requis."
+    );
+
+    error.statusCode = 401;
     throw error;
   }
 
@@ -118,10 +150,8 @@ export const logout = async (req, res) => {
   // Supprimer le refresh token de la DB
   // -----------------------------------------
 
-  const deleted = await RefreshToken.deleteByToken(
-    refreshToken
-  );
-
+  const deleted = await RefreshToken.deleteByToken(refreshToken);
+console.log("///////////////",deleted)
   if (!deleted) {
     const error = new Error(
       "Refresh token introuvable ou déjà supprimé."
@@ -131,31 +161,68 @@ export const logout = async (req, res) => {
     throw error;
   }
 
+  // -----------------------------------------
+  // Réponse
+  // -----------------------------------------
+
   return res.status(200).json({
     success: true,
     message: "Déconnexion réussie.",
   });
 };
 
+
 // =====================================================
 // REFRESH TOKEN
 // =====================================================
 
 export const refreshToken = async (req, res) => {
-  const { refreshToken: token } = req.body;
 
   // -----------------------------------------
-  // Vérifier la présence du token
+  // Récupérer le Authorization header
   // -----------------------------------------
 
-  if (!token) {
-    const error = new Error("Refresh token requis.");
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    const error = new Error(
+      "Authorization header requis."
+    );
+
     error.statusCode = 401;
     throw error;
   }
 
   // -----------------------------------------
-  // Vérifier le token JWT
+  // Vérifier le format Bearer
+  // -----------------------------------------
+
+  if (!authHeader.startsWith("Bearer ")) {
+    const error = new Error(
+      "Format du header invalide. Utilisez : Bearer <refreshToken>"
+    );
+
+    error.statusCode = 401;
+    throw error;
+  }
+
+  // -----------------------------------------
+  // Extraire le refresh token
+  // -----------------------------------------
+
+  const token = authHeader.substring(7).trim();
+
+  if (!token) {
+    const error = new Error(
+      "Refresh token requis."
+    );
+
+    error.statusCode = 401;
+    throw error;
+  }
+
+  // -----------------------------------------
+  // Vérifier le JWT refresh token
   // -----------------------------------------
 
   let decoded;
@@ -196,7 +263,10 @@ export const refreshToken = async (req, res) => {
   const user = await User.findById(decoded.id);
 
   if (!user) {
-    const error = new Error("Utilisateur introuvable.");
+    const error = new Error(
+      "Utilisateur introuvable."
+    );
+
     error.statusCode = 404;
     throw error;
   }
@@ -226,6 +296,10 @@ export const refreshToken = async (req, res) => {
 
   const tokens = await generateTokens(user.id);
 
+  // -----------------------------------------
+  // Réponse
+  // -----------------------------------------
+
   return res.status(200).json({
     success: true,
     message: "Token renouvelé avec succès.",
@@ -234,6 +308,7 @@ export const refreshToken = async (req, res) => {
     refreshToken: tokens.refreshToken,
   });
 };
+
 
 // =====================================================
 // CHECK EMAIL

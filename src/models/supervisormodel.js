@@ -10,7 +10,7 @@ const result = await pool.query('SELECT * FROM supervisor s WHERE s.company_id=$
 return result.rows;
 },
 getAllSupervisors : async ()=>{
-  const resulr = await pool.query('SELECT * FROM supervisor ');
+  const result = await pool.query('SELECT * FROM supervisor ');
   return result.rows;
 },
 getAllSupervisorsByCompany : async(company_id)=>{
@@ -18,8 +18,30 @@ const result = await pool.query('SELECT * FROM supervisor WHERE company_id =$1',
 return result.rows;
 },
 create : async(data)=>{
-const result = await pool.query('INSERT INTO supervisor VALUES $1 ',[data]);
-return result.rowCount;
+const result = await pool.query(
+  `
+  INSERT INTO supervisor (
+    company_id,
+    job,
+    department,
+    specialization,
+    years_of_experience,
+    user_id
+  )
+  VALUES ($1, $2, $3, $4, $5, $6)
+  RETURNING *
+  `,
+  [
+    data.company_id,
+    data.job,
+    data.department,
+    data.specialization,
+    data.years_of_experience,
+    data.user_id
+  ]
+);
+
+return result.rows[0];
 },
 update : async(user_id,data)=>{
   const result = await pool.query('UPDATE supervisor s SET $1 where s.user_id=$2 ',[data,user_id]);

@@ -31,14 +31,15 @@ const RefreshToken = {
 
 
   // Supprimer un Refresh Token précis
-  deleteByToken: async (token) => {
+ deleteByToken: async (token) => {
     const result = await pool.query(
       `DELETE FROM refresh_tokens
-       WHERE token = $1`,
+       WHERE token = $1
+       RETURNING id`,
       [token]
     );
 
-    return result.rowCount;
+    return result.rowCount > 0;
   },
 
 
