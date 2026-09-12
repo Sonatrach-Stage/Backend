@@ -1,12 +1,7 @@
 import "../../env.js";
 import pg from "pg";
 const {Pool}=pg;
-console.log(process.env.DB_USER);
-console.log(process.env.DB_NAME);
-console.log(process.env.DB_HOST);
-console.log(process.env.DB_PORT);
-console.log(process.env.DB_PASSWORD);
-console.log(process.env.DATABASE_URL);
+
 const pool = new Pool({
   user:process.env.DB_USER,
   database:process.env.DB_NAME,
