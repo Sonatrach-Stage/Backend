@@ -9,6 +9,10 @@ const Intern = {
 
     return result.rows[0];
   },
+  findById: async (id)=>{
+const result = await pool.query("SELECT i.* FROM intern i WHERE i.id=$1",[id]);
+return result.rows[0];
+},
 
   findByCompanyId: async (company_id) => {
     const result = await pool.query(
@@ -139,6 +143,10 @@ const Intern = {
 
     return result.rowCount;
   },
+  findPendingByCompanyId:async(company_id)=>{
+const result = await pool.query("SELECT i.* FROM intern i WHERE i.company_id=$1 AND i.con_status= 'pending'",[company_id]);
+return result.rows;
+  },
 
   delete: async (user_id) => {
     const result = await pool.query(
@@ -148,6 +156,11 @@ const Intern = {
 
     return result.rowCount;
   },
+  assignSupervisor: async (inter_id,super_id)=>{
+    const result = await pool.query("UPDATE intern i SET i.supervisor_id=$1 WHERE i.id=$2",[super_id,inter_id]);
+    return result.rowCount;
+  }
 };
 
 export default Intern;
+

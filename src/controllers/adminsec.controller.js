@@ -70,7 +70,7 @@ export const approveIntern = async (req, res) => {
   // Vérifier le statut
   // -----------------------------------------
 
-  if (intern.status !== "pending") {
+  if (intern.con_status !== "pending") {
     const error = new Error(
       "Ce stagiaire n'est pas en attente de validation."
     );
@@ -88,10 +88,19 @@ export const approveIntern = async (req, res) => {
   // Mettre à jour le statut du stagiaire
   // -----------------------------------------
 
-  await Intern.updateStatus(
-    intern.id,
-    "waiting_supervisor"
-  );
+await Intern.update(
+  intern.user_id,
+  {
+    studies_level: intern.studies_level,
+    establishment: intern.establishment,
+    start_date: intern.start_date,
+    end_date: intern.end_date,
+    convention_url: intern.convention_url,
+    convention_public_id: intern.convention_public_id,
+    con_status: "APPROVED",
+    status:"waiting"
+  }
+);
 
   return res.status(200).json({
     success: true,
@@ -152,10 +161,19 @@ export const rejectIntern = async (req, res) => {
   // Mettre à jour le statut
   // -----------------------------------------
 
-  await Intern.updateStatus(
-    intern.id,
-    "rejected"
-  );
+await Intern.update(
+  intern.user_id,
+  {
+    studies_level: intern.studies_level,
+    establishment: intern.establishment,
+    start_date: intern.start_date,
+    end_date: intern.end_date,
+    convention_url: intern.convention_url,
+    convention_public_id: intern.convention_public_id,
+    con_status: "rejected",
+    status:"waiting"
+  }
+);
 
   return res.status(200).json({
     success: true,
@@ -167,10 +185,9 @@ export const rejectIntern = async (req, res) => {
 // ASSIGN SUPERVISOR
 // Affecter un encadrant à un stagiaire
 // =====================================================
-
 export const assignSupervisor = async (req, res) => {
   const { internId } = req.params;
-  const { supervisorId } = req.body;
+  const { supervisorName } = req.body;
 
   const companyId = req.adminInfo?.company_id;
 
@@ -182,10 +199,7 @@ export const assignSupervisor = async (req, res) => {
     throw error;
   }
 
-  // -----------------------------------------
   // Vérifier le stagiaire
-  // -----------------------------------------
-
   const intern = await Intern.findById(internId);
 
   if (!intern) {
@@ -202,12 +216,10 @@ export const assignSupervisor = async (req, res) => {
     throw error;
   }
 
-  // -----------------------------------------
-  // Vérifier l'encadrant
-  // -----------------------------------------
-
-  const supervisor = await Supervisor.findById(
-    supervisorId
+  // Chercher l'encadrant par son nom + entreprise
+  const supervisor = await Supervisor.findByNameAndCompany(
+    supervisorName,
+    companyId
   );
 
   if (!supervisor) {
@@ -216,23 +228,7 @@ export const assignSupervisor = async (req, res) => {
     throw error;
   }
 
-  // -----------------------------------------
-  // Vérifier que l'encadrant appartient
-  // à la même entreprise
-  // -----------------------------------------
-
-  if (supervisor.company_id !== companyId) {
-    const error = new Error(
-      "Cet encadrant n'appartient pas à votre entreprise."
-    );
-    error.statusCode = 403;
-    throw error;
-  }
-
-  // -----------------------------------------
-  // Affecter l'encadrant
-  // -----------------------------------------
-
+  // Affectation avec l'ID uniquement côté backend
   await Intern.assignSupervisor(
     intern.id,
     supervisor.id
@@ -240,7 +236,7 @@ export const assignSupervisor = async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    message: "Encadrant affecté avec succès.",
+    message: "Encadrant affecté avec succès."
   });
 };
 

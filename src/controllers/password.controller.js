@@ -123,13 +123,14 @@ console.log("llllliiiii: ",user);
   // -----------------------------------------
 
   const token = await PasswordResetToken.findByToken(otp);
-console.log(token);
-console.log(token.user_id);
-console.log(user.id);
+
   if (!token || token.user_id !== user.id) {
     const error = new Error(
       "Code invalide ou expiré."
     );
+    console.log("////////",token);
+/*console.log("/////",token.user_id);*/
+console.log("///////",user.id);
 
     error.statusCode = 400;
     throw error;
@@ -203,12 +204,12 @@ export const resetPassword = async (req, res) => {
   // -----------------------------------------
   // Vérifier qu'un OTP a été validé
   // -----------------------------------------
-
+console.log("********",user.id)
   const token =
     await PasswordResetToken.findVerifiedById(
       user.id
     );
-
+console.log("********",token)
   if (!token) {
     const error = new Error(
       "Veuillez d'abord vérifier le code."
@@ -259,16 +260,27 @@ export const resetPassword = async (req, res) => {
 // =====================================================
 
 export const changePassword = async (req, res) => {
+  console.log("========== CHANGE PASSWORD ==========");
   const {
     current_password,
     new_password,
     confirm_password,
   } = req.body;
+const authHeader = req.headers.authorization;
+console.log("/////////////",authHeader)
+  if (!authHeader) {
+    const error = new Error(
+      "Authorization header requis."
+    );
 
+    error.statusCode = 401;
+    throw error;
+  }
   // -----------------------------------------
   // Vérifier les nouveaux mots de passe
   // -----------------------------------------
-
+console.log("mot de passe1:",new_password);
+console.log("mot de passe2:",confirm_password);
   if (new_password !== confirm_password) {
     const error = new Error(
       "Les nouveaux mots de passe ne correspondent pas."
@@ -283,7 +295,7 @@ export const changePassword = async (req, res) => {
   // -----------------------------------------
 
   const user = req.user;
-
+console.log("user =", user);
   // -----------------------------------------
   // Vérifier l'ancien mot de passe
   // -----------------------------------------

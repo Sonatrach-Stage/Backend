@@ -26,7 +26,7 @@ const router = express.Router();
 // 2. le rôle ADMIN SECONDARY
 
 router.use(protect);
-router.use(restrictTo("admin_secondaire"));
+router.use(restrictTo("SECONDARY_ADMIN"));
 
 // =====================================================
 // INTERNS
@@ -64,7 +64,7 @@ router.patch(
 
 // Désactiver un compte stagiaire
 router.patch(
-  "/interns/:internId/deactivate",
+  "/interns/:internId/desactivate",
   asyncHandler(deactivateIntern)
 );
 

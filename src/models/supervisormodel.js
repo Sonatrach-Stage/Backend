@@ -5,6 +5,10 @@ findByUserId : async (user_id)=>{
   const result = await pool.query('SELECT * FROM supervisor s WHERE s.user_id= $1',[user_id]);
 return result.rows[0];
 },
+  findById: async (id)=>{
+const result = await pool.query("SELECT s.* FROM supervisor s WHERE s.id=$1",[id]);
+return result.rows[0];
+},
 findByCompanyId : async (company_id)=>{
 const result = await pool.query('SELECT * FROM supervisor s WHERE s.company_id=$1',[company_id]);
 return result.rows;
@@ -50,6 +54,10 @@ return result.rowCount;
 delete : async (user_id)=>{
   const result = await pool.query('DELETE FROM supervisor s WHERE s.user_id=$1',[user_id]);
 return result.rowCount;
+},
+findByNameAndCompany: async (name,company_id)=>{
+  const result = await pool.query("SELECT s.* FROM supervisor s JOIN users u ON s.user_id=u.id WHERE u.name=$1 AND s.company_id=$2"[name,company_id]);
+  return result.rows[0];
 }
 };
 

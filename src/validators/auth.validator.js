@@ -535,12 +535,12 @@ export const resetPasswordValidator = [
 
 export const changePasswordValidator = [
 
-  body("currentPassword")
+  body("current_password")
     .notEmpty()
     .withMessage("Current password is required"),
 
 
-  body("newPassword")
+  body("new_password")
     .notEmpty()
     .withMessage("New password is required")
     .isLength({ min: 8 })
@@ -551,12 +551,12 @@ export const changePasswordValidator = [
     .withMessage("New password must contain at least one number"),
 
 
-  body("confirmPassword")
+  body("confirm_password")
     .notEmpty()
     .withMessage("Password confirmation is required")
     .custom((value, { req }) => {
 
-      if (value !== req.body.newPassword) {
+      if (value !== req.body.new_password) {
         throw new Error("Passwords do not match");
       }
 

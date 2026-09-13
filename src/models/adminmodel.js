@@ -3,7 +3,7 @@ import pool from "../config/db.js";
 
 const Admin={
 findByUserId: async(user_id)=>{
-const result = await pool.query('SELECT a.* FROM admin WHERE a.user_id=$1',[user_id]);
+const result = await pool.query('SELECT a.* FROM admin a WHERE a.user_id=$1',[user_id]);
 return result.rows[0];
 },
 create: async({user_id,type="second",company_id=null})=>{

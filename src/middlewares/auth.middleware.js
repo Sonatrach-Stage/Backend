@@ -12,14 +12,16 @@ import Intern from '../models/internmodel.js';
 // =====================================================
 
 export const protect = async (req, res, next) => {
+  console.log("========== PROTECT 1 : ENTER ==========");
   try {
-
+console.log("========== PROTECT 2 : TRY ==========");
     // 1. Récupérer le header Authorization
     const authHeader = req.headers.authorization;
-
+console.log("AUTH HEADER =", authHeader);
     // 2. Vérifier que le token existe
     //    et qu'il commence par "Bearer "
     if (!authHeader?.startsWith('Bearer ')) {
+       console.log("❌ PROTECT ERROR : Invalid Authorization format");
       return res.status(401).json({
         message: 'Token manquant.'
       });
@@ -27,19 +29,30 @@ export const protect = async (req, res, next) => {
 
     // 3. Récupérer uniquement le JWT
     const token = authHeader.split(' ')[1];
+    console.log("TOKEN =", token);
 
+        console.log("========== PROTECT 3 : VERIFY JWT ==========");
     // 4. Vérifier et décoder le JWT
+    console.log("JWT_SECRET exists:", !!process.env.JWT_SECRET);
+console.log("JWT_SECRET length:", process.env.JWT_SECRET?.length);
+console.log("AVANT VERIFY");
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET
     );
+    console.log("APRÈS VERIFY");
+ console.log("✅ DECODED TOKEN =", decoded);
 
+        console.log("========== PROTECT 4 : FIND USER ==========");
     // 5. Récupérer l'utilisateur depuis la base de données
     const user = await User.findById(decoded.id);
 
     // 6. Vérifier que l'utilisateur existe
     //    et que son compte est actif
     if (!user || !user.is_active) {
+      console.log(
+                `❌ PROTECT ERROR : User ${decoded.id} not found`
+            );
       return res.status(401).json({
         message: 'Utilisateur non autorisé.'
       });
@@ -47,8 +60,8 @@ export const protect = async (req, res, next) => {
 
     // 7. Mettre l'utilisateur connecté dans req.user
     req.user = user;
-
-
+  console.log("✅ PROTECT SUCCESS");
+ 
     // =================================================
     // INFORMATIONS SELON LE TYPE D'UTILISATEUR
     // =================================================
@@ -56,32 +69,38 @@ export const protect = async (req, res, next) => {
     // Si l'utilisateur est un administrateur
     const adminInfo = await Admin.findByUserId(user.id);
     req.adminInfo = adminInfo || null;
-
+  console.log("✅ adminInfo:",adminInfo);
 
     // Si l'utilisateur est un encadrant
     const supervisorInfo =
       await supervisor.findByUserId(user.id);
 
     req.supervisorInfo = supervisorInfo || null;
-
+  console.log("✅ req.supervisorInfo",req.supervisorInfo);
 
     // Si l'utilisateur est un stagiaire
     const internInfo =
       await Intern.findByUserId(user.id);
 
     req.internInfo = internInfo || null;
-
-
+console.log("✅ req.internInfo",req.internInfo);
+console.log("========== BEFORE NEXT ==========");
     // 8. Passer au middleware suivant
     next();
 
   } catch (error) {
 
-    // Token expiré, invalide, mal signé, etc.
+    console.error("🔥🔥🔥 PROTECT ERROR 🔥🔥🔥");
+    console.error("ERROR NAME:", error.name);
+    console.error("ERROR MESSAGE:", error.message);
+    console.error("ERROR STACK:", error.stack);
+
     return res.status(401).json({
-      message: 'Token invalide.'
+        success: false,
+        message: "Erreur dans le middleware protect",
+        error: error.message
     });
-  }
+}
 };
 
 
@@ -99,11 +118,11 @@ export const restrictTo = (...roles) => {
       // 1. Récupérer les rôles de l'utilisateur connecté
       const userRoles =
         await Role.getUsersRole(req.user.id);
-
+console.log("USERROLE: ",userRoles)
       // 2. Extraire uniquement les noms des rôles
       const roleNames =
-        userRoles.map((r) => r.name);
-
+        userRoles.name;
+console.log("roleNames: ",roleNames)
       // 3. Vérifier si l'utilisateur possède
       //    au moins un des rôles autorisés
       const hasRole =
@@ -117,7 +136,7 @@ export const restrictTo = (...roles) => {
           message: 'Accès refusé.'
         });
       }
-
+//===============FIN RESTRICTO =======================
       // 5. Rôle autorisé
       next();
 
