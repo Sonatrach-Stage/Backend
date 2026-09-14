@@ -56,7 +56,7 @@ delete : async (user_id)=>{
 return result.rowCount;
 },
 findByNameAndCompany: async (name,company_id)=>{
-  const result = await pool.query("SELECT s.* FROM supervisor s JOIN users u ON s.user_id=u.id WHERE u.name=$1 AND s.company_id=$2"[name,company_id]);
+  const result = await pool.query("SELECT s.* FROM supervisor s JOIN users u ON s.user_id=u.id WHERE u.name=$1 AND s.company_id=$2",[name,company_id]);
   return result.rows[0];
 }
 };
