@@ -4,7 +4,7 @@ import fs from "fs/promises";
 
 import { sendEmail } from "../utils/sendEmail.js";
 
-import EmailOtp from "../models/emailOtpModel.js";
+import EmailOtp from "../models/emailOtpmodel.js";
 import PendingRegistration from "../models/pendingRegistrationModel.js";
 import User from "../models/usermodel.js";
 import Company from "../models/companymodel.js";
