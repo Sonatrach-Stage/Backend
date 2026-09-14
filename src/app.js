@@ -4,7 +4,7 @@ import {notfound,errorHandler} from "./middlewares/error.middleware.js";
 import passport from './config/passport.js';
 import authRoutes from './routes/auth.routes.js';
 import adminsec from './routes/adminsec.routes.js';
-
+import { swaggerSetup } from './config/swagger.js';
 const app = express();
 
 app.use(cors());
@@ -14,7 +14,7 @@ app.use(passport.initialize());
 
 app.use("/auth", authRoutes);
 app.use("/adminsec",adminsec);
-
+swaggerSetup(app);
 app.get("/",(req,res)=>{
   res.json("the server of our project is running")
 });
