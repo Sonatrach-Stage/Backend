@@ -24,7 +24,7 @@ const options = {
       title: 'StageLink — API',
       version: '1.0.0',
       description:
-        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants)',
+        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire)',
     },
     servers,
     components: {
@@ -171,6 +171,71 @@ const options = {
           properties: {
             supervisorName: { type: 'string', example: 'Amine Boudiaf' }
           }
+        },
+
+        // ── Tâches & Activités ────────────────────────
+        CreateTacheBySupervisor: {
+          type: 'object',
+          required: ['intern_name', 'title', 'priority', 'end_date'],
+          properties: {
+            intern_name: { type: 'string', example: 'Katia Benali', description: "Nom du stagiaire ciblé (recherché par Intern.findByName)" },
+            title: { type: 'string', example: 'Intégrer le module de paiement' },
+            description: { type: 'string', example: 'Ajouter Stripe au checkout de la plateforme.' },
+            priority: { type: 'string', example: 'high' },
+            end_date: { type: 'string', format: 'date', example: '2026-06-15' }
+          }
+        },
+        UpdateTacheBySupervisor: {
+          type: 'object',
+          description: 'Tous les champs sont optionnels — seuls les champs fournis sont mis à jour.',
+          properties: {
+            intern_name: { type: 'string', example: 'Katia Benali', description: 'Si fourni, réaffecte la tâche à un autre stagiaire' },
+            title: { type: 'string', example: 'Intégrer le module de paiement (v2)' },
+            description: { type: 'string', example: 'Ajouter Stripe + PayPal au checkout.' },
+            priority: { type: 'string', example: 'medium' },
+            end_date: { type: 'string', format: 'date', example: '2026-06-20' }
+          }
+        },
+        CreateTacheByIntern: {
+          type: 'object',
+          required: ['title', 'priority', 'end_date'],
+          properties: {
+            title: { type: 'string', example: 'Corriger le bug de pagination' },
+            description: { type: 'string', example: 'La pagination ne fonctionne pas sur mobile.' },
+            priority: { type: 'string', example: 'low' },
+            end_date: { type: 'string', format: 'date', example: '2026-06-10' }
+          }
+        },
+        UpdateTacheByIntern: {
+          type: 'object',
+          description: 'Tous les champs sont optionnels — seuls les champs fournis sont mis à jour.',
+          properties: {
+            title: { type: 'string', example: 'Corriger le bug de pagination (mobile + tablette)' },
+            description: { type: 'string', example: 'Étendre le correctif aux tablettes.' },
+            priority: { type: 'string', example: 'medium' },
+            end_date: { type: 'string', format: 'date', example: '2026-06-12' }
+          }
+        },
+        CreateActivity: {
+          type: 'object',
+          required: ['title', 'interns', 'end_date'],
+          properties: {
+            title: { type: 'string', example: 'Sprint Planning' },
+            description: { type: 'string', example: 'Planification du sprint 4 avec toute l\'équipe.' },
+            interns: { type: 'string', example: 'Katia Benali, Ahmed Slimani', description: 'Nom(s) des stagiaires concernés (texte libre, recherché ensuite via ILIKE)' },
+            priority: { type: 'string', example: 'medium', description: "Accepté par l'API mais non persisté en base actuellement (ignoré côté serveur)." },
+            end_date: { type: 'string', format: 'date', example: '2026-06-05' }
+          }
+        },
+        UpdateActivity: {
+          type: 'object',
+          description: 'Tous les champs sont optionnels — seuls les champs fournis sont mis à jour.',
+          properties: {
+            title: { type: 'string', example: 'Sprint Planning (reporté)' },
+            description: { type: 'string', example: 'Planification déplacée à vendredi.' },
+            interns: { type: 'string', example: 'Katia Benali, Ahmed Slimani' },
+            end_date: { type: 'string', format: 'date', example: '2026-06-07' }
+          }
         }
       }
     },
@@ -178,6 +243,7 @@ const options = {
     tags: [
       { name: 'Auth' },
       { name: 'Admin Sec' },
+      { name: 'Tâches & Activités' },
     ],
     paths: {
 
@@ -839,6 +905,369 @@ const options = {
             },
             401: { description: 'Non authentifié' },
             403: { description: "Accès refusé ou impossible de déterminer l'entreprise" }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // TÂCHES & ACTIVITÉS — ENCADRANT (SUPERVISOR)
+      // Toutes les routes nécessitent : protect
+      // ══════════════════════════════════════════════
+      '/actandtach/sup/taches': {
+        get: {
+          tags: ['Tâches & Activités'],
+          summary: "Liste des tâches créées par l'encadrant connecté",
+          description: "Protégé par protect. Nécessite req.supervisorInfo (utilisateur avec un profil encadrant).",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des tâches',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    taches: [
+                      { id: 4, company_id: 2, supervisor_id: 3, intern_id: 5, title: 'Intégrer le module de paiement', description: 'Ajouter Stripe au checkout.', priority: 'high', end_date: '2026-06-15', status: 'in progress' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas encadrant" }
+          }
+        }
+      },
+      '/actandtach/sup/activities': {
+        get: {
+          tags: ['Tâches & Activités'],
+          summary: "Liste des activités créées par l'encadrant connecté",
+          description: "Protégé par protect. Nécessite req.supervisorInfo (utilisateur avec un profil encadrant).",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des activités',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    activities: [
+                      { id: 2, company_id: 2, supervisor_id: 3, interns: 'Katia Benali, Ahmed Slimani', title: 'Sprint Planning', description: "Planification du sprint 4.", end_date: '2026-06-05' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas encadrant" }
+          }
+        }
+      },
+      '/actandtach/sup/new_tache': {
+        post: {
+          tags: ['Tâches & Activités'],
+          summary: "Créer une tâche pour un stagiaire (par l'encadrant)",
+          description: "Protégé par protect. Le stagiaire cible est recherché par son nom (intern_name).",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateTacheBySupervisor' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Tâche créée',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    tache: { id: 4, company_id: 2, supervisor_id: 3, intern_id: 5, title: 'Intégrer le module de paiement', description: 'Ajouter Stripe au checkout.', priority: 'high', end_date: '2026-06-15', status: 'in progress' }
+                  }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas encadrant" },
+            404: { description: 'Stagiaire introuvable (intern_name ne correspond à aucun stagiaire)' }
+          }
+        }
+      },
+      '/actandtach/sup/modify_tache/{tacheId}': {
+        patch: {
+          tags: ['Tâches & Activités'],
+          summary: "Modifier une tâche (par l'encadrant)",
+          description: "Protégé par protect. Les champs non fournis conservent leur valeur actuelle. Si intern_name est fourni, la tâche est réaffectée à ce stagiaire.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'tacheId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Tache ID' }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateTacheBySupervisor' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Tâche modifiée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: 'La tâche est modifiée avec succès !' }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas encadrant" },
+            404: { description: 'Tâche introuvable' }
+          }
+        }
+      },
+      '/actandtach/sup/delete_tache/{tacheId}': {
+        delete: {
+          tags: ['Tâches & Activités'],
+          summary: "Supprimer une tâche (par l'encadrant)",
+          description: 'Protégé par protect.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'tacheId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Tache ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Tâche supprimée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: 'La tâche est supprimée avec succès !' }
+                }
+              }
+            },
+            403: { description: "La tâche n'existe pas, ou impossible de déterminer l'entreprise / l'utilisateur n'est pas encadrant" }
+          }
+        }
+      },
+      '/actandtach/sup/new_activity': {
+        post: {
+          tags: ['Tâches & Activités'],
+          summary: "Créer une activité (par l'encadrant)",
+          description: 'Protégé par protect. Note : le champ "priority" est accepté dans le body mais actuellement ignoré par le serveur (non stocké en base).',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateActivity' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Activité créée',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    activity: { id: 2, company_id: 2, supervisor_id: 3, interns: 'Katia Benali, Ahmed Slimani', title: 'Sprint Planning', description: "Planification du sprint 4.", end_date: '2026-06-05' }
+                  }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas encadrant" }
+          }
+        }
+      },
+      '/actandtach/sup/modify_activity/{activityId}': {
+        patch: {
+          tags: ['Tâches & Activités'],
+          summary: "Modifier une activité (par l'encadrant)",
+          description: "Protégé par protect. Les champs non fournis conservent leur valeur actuelle.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'activityId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Activity ID' }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateActivity' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Activité modifiée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: "L'activité est modifiée avec succès !" }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas encadrant" },
+            404: { description: 'Activité introuvable' }
+          }
+        }
+      },
+      '/actandtach/sup/delete_activity/{activityId}': {
+        delete: {
+          tags: ['Tâches & Activités'],
+          summary: "Supprimer une activité (par l'encadrant)",
+          description: 'Protégé par protect.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'activityId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Activity ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Activité supprimée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: "L'activité est supprimée avec succès !" }
+                }
+              }
+            },
+            403: { description: "L'activité n'existe pas, ou impossible de déterminer l'entreprise / l'utilisateur n'est pas encadrant" }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // TÂCHES — STAGIAIRE (INTERN)
+      // Toutes les routes nécessitent : protect
+      // ══════════════════════════════════════════════
+      '/actandtach/int/taches': {
+        get: {
+          tags: ['Tâches & Activités'],
+          summary: 'Liste des tâches assignées au stagiaire connecté',
+          description: 'Protégé par protect. Nécessite req.internInfo (utilisateur avec un profil stagiaire).',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des tâches',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    taches: [
+                      { id: 4, company_id: 2, supervisor_id: 3, intern_id: 5, title: 'Intégrer le module de paiement', description: 'Ajouter Stripe au checkout.', priority: 'high', end_date: '2026-06-15', status: 'in progress' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas stagiaire" }
+          }
+        }
+      },
+      '/actandtach/int/activities': {
+        get: {
+          tags: ['Tâches & Activités'],
+          summary: 'Liste des activités où le stagiaire connecté est impliqué',
+          description: "Protégé par protect. La recherche se fait par correspondance du nom du stagiaire (ILIKE) dans le champ interns.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des activités',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    activities: [
+                      { id: 2, company_id: 2, supervisor_id: 3, interns: 'Katia Benali, Ahmed Slimani', title: 'Sprint Planning', description: "Planification du sprint 4.", end_date: '2026-06-05' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas stagiaire" }
+          }
+        }
+      },
+      '/actandtach/interns/new_tache': {
+        post: {
+          tags: ['Tâches & Activités'],
+          summary: 'Créer une tâche pour soi-même (par le stagiaire)',
+          description: "Protégé par protect. Le stagiaire doit avoir un encadrant déjà assigné (supervisor_id), sinon 400.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateTacheByIntern' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Tâche créée',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    tache: { id: 6, company_id: 2, supervisor_id: 3, intern_id: 5, title: 'Corriger le bug de pagination', description: 'La pagination ne fonctionne pas sur mobile.', priority: 'low', end_date: '2026-06-10', status: 'in progress' }
+                  }
+                }
+              }
+            },
+            400: { description: "Aucun encadrant n'est assigné à ce stagiaire" },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas stagiaire" },
+            404: { description: 'Stagiaire introuvable' }
+          }
+        }
+      },
+      '/actandtach/interns/modify_tache/{tacheId}': {
+        patch: {
+          tags: ['Tâches & Activités'],
+          summary: 'Modifier sa propre tâche (par le stagiaire)',
+          description: "Protégé par protect. Les champs non fournis conservent leur valeur actuelle.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'tacheId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Tache ID' }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateTacheByIntern' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Tâche modifiée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: 'La tâche est modifiée avec succès !' }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise ou l'utilisateur n'est pas stagiaire" },
+            404: { description: 'Tâche introuvable' }
+          }
+        }
+      },
+      '/actandtach/interns/delete_tache/{tacheId}': {
+        delete: {
+          tags: ['Tâches & Activités'],
+          summary: 'Supprimer sa propre tâche (par le stagiaire)',
+          description: 'Protégé par protect.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'tacheId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Tache ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Tâche supprimée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: 'La tâche est supprimée avec succès !' }
+                }
+              }
+            },
+            403: { description: "La tâche n'existe pas, ou impossible de déterminer l'entreprise / l'utilisateur n'est pas stagiaire" }
           }
         }
       }
