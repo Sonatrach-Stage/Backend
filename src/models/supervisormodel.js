@@ -47,9 +47,24 @@ const result = await pool.query(
 
 return result.rows[0];
 },
-update : async(user_id,data)=>{
-  const result = await pool.query('UPDATE supervisor s SET $1 where s.user_id=$2 ',[data,user_id]);
-return result.rowCount;
+update: async (user_id, data) => {
+  const result = await pool.query(
+    `UPDATE supervisor
+     SET job = $1,
+         department = $2,
+         specialization = $3,
+         years_of_experience = $4
+     WHERE user_id = $5`,
+    [
+      data.job,
+      data.department,
+      data.specialization,
+      data.years_of_experience,
+      user_id
+    ]
+  );
+
+  return result.rowCount;
 },
 delete : async (user_id)=>{
   const result = await pool.query('DELETE FROM supervisor s WHERE s.user_id=$1',[user_id]);

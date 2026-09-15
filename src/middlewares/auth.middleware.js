@@ -65,7 +65,7 @@ console.log("AVANT VERIFY");
     // =================================================
     // INFORMATIONS SELON LE TYPE D'UTILISATEUR
     // =================================================
-
+console.log("✅ lisalisa:",user.id);
     // Si l'utilisateur est un administrateur
     const adminInfo = await Admin.findByUserId(user.id);
     req.adminInfo = adminInfo || null;

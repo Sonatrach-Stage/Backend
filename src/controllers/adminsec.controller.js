@@ -187,9 +187,16 @@ await Intern.update(
 // =====================================================
 export const assignSupervisor = async (req, res) => {
   const { internId } = req.params;
-  const { supervisorName } = req.body;
-
+  const  supervisorName  = req.body.supervisorName;
+  console.log("liliana:",supervisorName);
+  
   const companyId = req.adminInfo?.company_id;
+console.log("liliana:",req.adminInfo);
+console.log("liliana:",req.supervisorInfo);
+console.log("liliana:",req.internInfo);
+  // =========================================
+  // 1. Vérifications des données reçues
+  // =========================================
 
   if (!companyId) {
     const error = new Error(
@@ -199,7 +206,22 @@ export const assignSupervisor = async (req, res) => {
     throw error;
   }
 
-  // Vérifier le stagiaire
+  if (!internId) {
+    const error = new Error("ID du stagiaire obligatoire.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!supervisorName || !supervisorName.trim()) {
+    const error = new Error("Le nom de l'encadrant est obligatoire.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // =========================================
+  // 2. Vérifier le stagiaire
+  // =========================================
+
   const intern = await Intern.findById(internId);
 
   if (!intern) {
@@ -208,7 +230,12 @@ export const assignSupervisor = async (req, res) => {
     throw error;
   }
 
-  if (intern.company_id !== companyId) {
+  // =========================================
+  // 3. Vérifier que le stagiaire appartient
+  //    à la même entreprise
+  // =========================================
+
+  if (Number(intern.company_id) !== Number(companyId)) {
     const error = new Error(
       "Vous n'êtes pas autorisé à gérer ce stagiaire."
     );
@@ -216,30 +243,90 @@ export const assignSupervisor = async (req, res) => {
     throw error;
   }
 
-  // Chercher l'encadrant par son nom + entreprise
-  const supervisor = await Supervisor.findByNameAndCompany(
-    supervisorName,
-    companyId
-  );
+  // =========================================
+  // 4. Vérifier si le stagiaire possède déjà
+  //    un encadrant
+  // =========================================
+
+  if (intern.supervisor_id) {
+    const error = new Error(
+      "Ce stagiaire possède déjà un encadrant."
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // =========================================
+  // 5. Chercher l'encadrant dans la même
+  //    entreprise
+  // =========================================
+
+  const supervisor =
+    await Supervisor.findByNameAndCompany(
+      supervisorName.trim(),
+      companyId
+    );
 
   if (!supervisor) {
-    const error = new Error("Encadrant introuvable.");
+    const error = new Error(
+      "Encadrant introuvable dans votre entreprise."
+    );
     error.statusCode = 404;
     throw error;
   }
 
-  // Affectation avec l'ID uniquement côté backend
-  await Intern.assignSupervisor(
-    intern.id,
-    supervisor.id
+  // =========================================
+  // 6. Vérification supplémentaire de sécurité
+  // =========================================
+
+  if (
+    supervisor.company_id &&
+    Number(supervisor.company_id) !== Number(companyId)
+  ) {
+    const error = new Error(
+      "Cet encadrant n'appartient pas à votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // =========================================
+  // 7. Affectation
+  // =========================================
+
+  const updatedRows = await Intern.assignSupervisor(
+    supervisor.id,
+    intern.id
   );
+
+  // =========================================
+  // 8. Vérifier que l'affectation a réellement
+  //    été effectuée
+  // =========================================
+
+  if (updatedRows === 0) {
+    const error = new Error(
+      "L'affectation de l'encadrant a échoué."
+    );
+    error.statusCode = 500;
+    throw error;
+  }
+
+  // =========================================
+  // 9. Réponse
+  // =========================================
 
   return res.status(200).json({
     success: true,
-    message: "Encadrant affecté avec succès."
+    message: "Encadrant affecté avec succès.",
+    data: {
+      internId: intern.id,
+      supervisorId: supervisor.id
+    }
   });
-};
+}
 
+;
 // =====================================================
 // ACTIVATE INTERN
 // Activer manuellement un compte stagiaire

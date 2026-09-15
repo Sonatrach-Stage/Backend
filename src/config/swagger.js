@@ -219,7 +219,8 @@ const options = {
         post: {
           tags: ['Auth'],
           summary: 'Inscription stagiaire',
-          description: "Crée une inscription en attente et envoie un OTP par email. L'entreprise indiquée doit exister et être APPROVED.",
+          description: "Crée une inscription en attente et envoie un OTP par email. L'entreprise indiquée doit exister et être APPROVED. Route publique — aucun token requis.",
+          security: [],
           requestBody: {
             required: true,
             content: {
@@ -250,7 +251,8 @@ const options = {
         post: {
           tags: ['Auth'],
           summary: 'Inscription encadrant',
-          description: "Crée une inscription en attente et envoie un OTP par email. L'entreprise indiquée doit exister et être APPROVED.",
+          description: "Crée une inscription en attente et envoie un OTP par email. L'entreprise indiquée doit exister et être APPROVED. Route publique — aucun token requis.",
+          security: [],
           requestBody: {
             required: true,
             content: {
@@ -598,7 +600,8 @@ const options = {
         patch: {
           tags: ['Auth'],
           summary: 'Changer le mot de passe (connecté)',
-          description: 'Nécessite un access token valide (header Authorization: Bearer <accessToken>).',
+          description: 'Protégé par le middleware protect — nécessite un access token valide (header Authorization: Bearer <accessToken>).',
+          security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -630,7 +633,8 @@ const options = {
         get: {
           tags: ['Admin Sec'],
           summary: 'Liste des stagiaires en attente de validation',
-          description: "Accessible uniquement par un admin secondaire (SECONDARY_ADMIN), limité à son entreprise.",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Nécessite un access token valide appartenant à un admin secondaire. Limité à son entreprise.",
+          security: [{ bearerAuth: [] }],
           responses: {
             200: {
               description: 'Liste des stagiaires en attente',
@@ -662,6 +666,8 @@ const options = {
         get: {
           tags: ['Admin Sec'],
           summary: "Liste de tous les stagiaires de l'entreprise",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Nécessite un access token valide appartenant à un admin secondaire.",
+          security: [{ bearerAuth: [] }],
           responses: {
             200: {
               description: 'Liste des stagiaires',
@@ -686,7 +692,8 @@ const options = {
         patch: {
           tags: ['Admin Sec'],
           summary: 'Approuver un stagiaire',
-          description: "Active le compte utilisateur et passe con_status à APPROVED. Le stagiaire doit être en statut 'pending'.",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Active le compte utilisateur et passe con_status à APPROVED. Le stagiaire doit être en statut 'pending'.",
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'internId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Intern ID' }
           ],
@@ -709,7 +716,8 @@ const options = {
         patch: {
           tags: ['Admin Sec'],
           summary: 'Refuser un stagiaire',
-          description: "Désactive le compte utilisateur et passe con_status à rejected.",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Désactive le compte utilisateur et passe con_status à rejected.",
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'internId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Intern ID' }
           ],
@@ -731,6 +739,8 @@ const options = {
         patch: {
           tags: ['Admin Sec'],
           summary: 'Activer manuellement un compte stagiaire',
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN').",
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'internId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Intern ID' }
           ],
@@ -752,6 +762,8 @@ const options = {
         patch: {
           tags: ['Admin Sec'],
           summary: 'Désactiver un compte stagiaire',
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN').",
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'internId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Intern ID' }
           ],
@@ -773,7 +785,8 @@ const options = {
         patch: {
           tags: ['Admin Sec'],
           summary: 'Affecter un encadrant à un stagiaire',
-          description: "L'encadrant est recherché par son nom (supervisorName) au sein de l'entreprise de l'admin connecté.",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). L'encadrant est recherché par son nom (supervisorName) au sein de l'entreprise de l'admin connecté.",
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'internId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Intern ID' }
           ],
@@ -807,6 +820,8 @@ const options = {
         get: {
           tags: ['Admin Sec'],
           summary: "Liste des encadrants de l'entreprise",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN').",
+          security: [{ bearerAuth: [] }],
           responses: {
             200: {
               description: 'Liste des encadrants',

@@ -39,6 +39,10 @@ return result.rows[0];
 
     return result.rows;
   },
+  findByName:async(name)=>{
+const result = await pool.query("SELECT i.* FROM intern i JOIN users u ON u.id= i.user_id WHERE u.name=$1 ",[name]);
+return result.rows[0];
+  },
 
   getInternsByCompany: async (company_id) => {
     const result = await pool.query(
@@ -156,10 +160,18 @@ return result.rows;
 
     return result.rowCount;
   },
-  assignSupervisor: async (inter_id,super_id)=>{
-    const result = await pool.query("UPDATE intern i SET i.supervisor_id=$1 WHERE i.id=$2",[super_id,inter_id]);
+  assignSupervisor: async (super_id,intern_id)=>{
+      console.log("inter_id =", intern_id);
+  console.log("super_id =", super_id);
+    const result = await pool.query("UPDATE intern SET supervisor_id=$1 WHERE id=$2",[super_id,intern_id]);
+     console.log("rowCount:", result.rowCount);
     return result.rowCount;
-  }
+  },
+  findNameById: async (id)=>{
+    const result= await pool.query("SELECT u.name FROM users u JOIN intern i ON i.user_id=u.id WHERE i.id=$1",[id]);
+    return result.rows[0];
+  },
+
 };
 
 export default Intern;
