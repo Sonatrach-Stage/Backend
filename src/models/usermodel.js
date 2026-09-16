@@ -142,6 +142,10 @@ updatePassword: async (userId, hashedPassword) => {
   );
 
   return result.rowCount;
+},
+findByName: async(name)=>{
+  const result = await pool.query("SELECT u.* FROM users u WHERE u.name=$1",[name]);
+  return result.rows[0];
 }
 };
 
