@@ -24,7 +24,7 @@ const options = {
       title: 'StageLink — API',
       version: '1.0.0',
       description:
-        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique)',
+        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire)',
     },
     servers,
     components: {
@@ -236,6 +236,26 @@ const options = {
             interns: { type: 'string', example: 'Katia Benali, Ahmed Slimani' },
             end_date: { type: 'string', format: 'date', example: '2026-06-07' }
           }
+        },
+
+        // ── Chat ───────────────────────────────────────
+        CreateConversation: {
+          type: 'object',
+          required: ['user_name'],
+          properties: {
+            user_name: {
+              type: 'string',
+              example: 'Katia Benali',
+              description: "Nom exact de l'autre participant (stagiaire ou encadrant selon le rôle de l'utilisateur connecté). Recherché via User.findByName."
+            }
+          }
+        },
+        UpdateMessage: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            content: { type: 'string', example: 'En fait je peux venir demain matin.' }
+          }
         }
       }
     },
@@ -246,6 +266,7 @@ const options = {
       { name: 'Tâches & Activités' },
       { name: 'Super Admin' },
       { name: 'Companies' },
+      { name: 'Chat' },
     ],
     paths: {
 
@@ -1470,6 +1491,154 @@ const options = {
             500: { description: 'Erreur serveur' }
           }
         }
+      },
+
+      // ══════════════════════════════════════════════
+      // CHAT — CONVERSATIONS ENCADRANT <-> STAGIAIRE
+      // Toutes les routes nécessitent : protect
+      // ══════════════════════════════════════════════
+      '/chat/conversations': {
+        post: {
+          tags: ['Chat'],
+          summary: 'Obtenir ou créer une conversation avec un utilisateur',
+          description: "Protégé par protect. L'utilisateur connecté doit être soit un encadrant, soit un stagiaire. Le champ user_name désigne l'AUTRE participant (le stagiaire si l'appelant est l'encadrant, ou l'encadrant si l'appelant est le stagiaire). Les deux doivent être liés (même entreprise, et le stagiaire doit avoir cet encadrant assigné).",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateConversation' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Conversation récupérée ou créée',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Conversation récupérée avec succès.',
+                    conversation: { id: 7, supervisor_id: 3, intern_id: 5, created_at: '2026-05-01T10:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: "user_name manquant, tentative de conversation avec soi-même, ou le stagiaire n'a pas encore de superviseur" },
+            403: { description: "Le destinataire ne correspond pas au bon rôle attendu, n'est pas affecté à l'utilisateur, ou entreprises différentes. Aussi renvoyé si l'utilisateur n'est ni encadrant ni stagiaire." },
+            404: { description: "Utilisateur cible introuvable, ou n'est pas du rôle attendu (pas stagiaire / pas encadrant)" },
+            500: { description: 'Erreur serveur' }
+          }
+        },
+        get: {
+          tags: ['Chat'],
+          summary: 'Liste de mes conversations',
+          description: "Protégé par protect. Retourne les conversations selon que l'utilisateur connecté est encadrant ou stagiaire.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des conversations',
+              content: {
+                'application/json': {
+                  example: {
+                    conversations: [
+                      { id: 7, supervisor_id: 3, intern_id: 5, created_at: '2026-05-01T10:00:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: 'Utilisateur non autorisé à utiliser le chat (ni encadrant ni stagiaire)' },
+            500: { description: 'Erreur serveur' }
+          }
+        }
+      },
+      '/chat/conversations/{conversationId}/messages': {
+        get: {
+          tags: ['Chat'],
+          summary: "Messages d'une conversation",
+          description: "Protégé par protect. Marque automatiquement les messages comme lus pour l'utilisateur connecté après récupération.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'conversationId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Conversation ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Conversation + messages',
+              content: {
+                'application/json': {
+                  example: {
+                    conversation: { id: 7, supervisor_id: 3, intern_id: 5, supervisor_user_id: 20, intern_user_id: 12 },
+                    messages: [
+                      { id: 15, conversation_id: 7, sender_id: 12, content: 'Bonjour, je serai en retard demain.', is_read: true, created_at: '2026-05-02T09:00:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: "Accès refusé à cette conversation (l'utilisateur n'en fait pas partie)" },
+            404: { description: 'Conversation introuvable' },
+            500: { description: 'Erreur serveur' }
+          }
+        }
+      },
+      '/chat/messages/{messageId}': {
+        patch: {
+          tags: ['Chat'],
+          summary: 'Modifier mon message',
+          description: 'Protégé par protect. Seul l\'auteur du message peut le modifier.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'messageId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Message ID' }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateMessage' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Message modifié',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Message modifié avec succès.',
+                    updatedMessage: { id: 15, conversation_id: 7, sender_id: 12, content: 'En fait je peux venir demain matin.', updated_at: '2026-05-02T09:05:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: 'Le contenu du message est obligatoire (vide ou manquant)' },
+            404: { description: "Message introuvable ou l'utilisateur n'en est pas l'auteur" },
+            500: { description: 'Erreur serveur' }
+          }
+        },
+        delete: {
+          tags: ['Chat'],
+          summary: 'Supprimer mon message',
+          description: "Protégé par protect. Seul l'auteur du message peut le supprimer.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'messageId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Message ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Message supprimé',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Message supprimé avec succès.',
+                    deletedMessage: { id: 15, conversation_id: 7, sender_id: 12, content: 'Bonjour, je serai en retard demain.' }
+                  }
+                }
+              }
+            },
+            404: { description: "Message introuvable ou l'utilisateur n'en est pas l'auteur" },
+            500: { description: 'Erreur serveur' }
+          }
+        }
       }
     }
   },
@@ -1496,4 +1665,3 @@ export const swaggerSetup = (app) => {
 
   console.log('Swagger StageLink → /api-docs');
 };
- 
