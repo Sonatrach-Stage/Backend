@@ -24,7 +24,7 @@ const options = {
       title: 'StageLink — API',
       version: '1.0.0',
       description:
-        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire)',
+        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique)',
     },
     servers,
     components: {
@@ -244,6 +244,8 @@ const options = {
       { name: 'Auth' },
       { name: 'Admin Sec' },
       { name: 'Tâches & Activités' },
+      { name: 'Super Admin' },
+      { name: 'Companies' },
     ],
     paths: {
 
@@ -1270,6 +1272,204 @@ const options = {
             403: { description: "La tâche n'existe pas, ou impossible de déterminer l'entreprise / l'utilisateur n'est pas stagiaire" }
           }
         }
+      },
+
+      // ══════════════════════════════════════════════
+      // SUPER ADMIN — GESTION DES ENTREPRISES
+      // Toutes les routes nécessitent : protect + restrictTo("SUPER_ADMIN")
+      // Aucune de ces routes n'attend de body.
+      // ══════════════════════════════════════════════
+      '/adminsup/companies': {
+        get: {
+          tags: ['Super Admin'],
+          summary: 'Liste de toutes les entreprises (tous statuts confondus)',
+          description: "Protégé par protect + restrictTo('SUPER_ADMIN').",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des entreprises',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    companies: [
+                      {
+                        id: 2, user_id: 8, name: 'TechCorp', address: '12 Rue des Frères, Alger',
+                        logo: 'https://cloudinary.com/...', description: 'Entreprise spécialisée dans le développement logiciel.',
+                        website_URL: 'https://techcorp.dz', registration_number: 'RC-2023-00123',
+                        company_email: 'contact@techcorp.dz', company_phone: '0213000000',
+                        company_status: 'pending'
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: 'Accès refusé (rôle différent de SUPER_ADMIN)' }
+          }
+        }
+      },
+      '/adminsup/companies/pending': {
+        get: {
+          tags: ['Super Admin'],
+          summary: 'Liste des entreprises en attente de validation',
+          description: "Protégé par protect + restrictTo('SUPER_ADMIN').",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des entreprises en attente',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    companies: [
+                      { id: 2, user_id: 8, name: 'TechCorp', company_email: 'contact@techcorp.dz', company_status: 'pending' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: 'Accès refusé (rôle différent de SUPER_ADMIN)' }
+          }
+        }
+      },
+      '/adminsup/companies/approved': {
+        get: {
+          tags: ['Super Admin'],
+          summary: 'Liste des entreprises approuvées (vue Super Admin)',
+          description: "Protégé par protect + restrictTo('SUPER_ADMIN').",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des entreprises approuvées',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    companies: [
+                      { id: 1, user_id: 4, name: 'InnovaSoft', company_email: 'contact@innovasoft.dz', company_status: 'APPROVED' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: 'Accès refusé (rôle différent de SUPER_ADMIN)' }
+          }
+        }
+      },
+      '/adminsup/companies/{id}/approve': {
+        patch: {
+          tags: ['Super Admin'],
+          summary: 'Approuver une entreprise',
+          description: "Protégé par protect + restrictTo('SUPER_ADMIN'). Active également le compte du SECONDARY_ADMIN associé. Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Company ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Entreprise approuvée',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Company approved successfully',
+                    company: { id: 2, name: 'TechCorp', company_status: 'APPROVED' }
+                  }
+                }
+              }
+            },
+            400: { description: 'Company is already approved' },
+            401: { description: 'Non authentifié' },
+            403: { description: 'Accès refusé (rôle différent de SUPER_ADMIN)' },
+            404: { description: 'Company not found' }
+          }
+        }
+      },
+      '/adminsup/companies/{id}/reject': {
+        patch: {
+          tags: ['Super Admin'],
+          summary: 'Rejeter une entreprise',
+          description: "Protégé par protect + restrictTo('SUPER_ADMIN'). Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Company ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Entreprise rejetée',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Company rejected successfully',
+                    company: { id: 2, name: 'TechCorp', company_status: 'REJECTED' }
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: 'Accès refusé (rôle différent de SUPER_ADMIN)' },
+            404: { description: 'Company not found' }
+          }
+        }
+      },
+      '/adminsup/companies/{id}': {
+        delete: {
+          tags: ['Super Admin'],
+          summary: 'Supprimer une entreprise',
+          description: "Protégé par protect + restrictTo('SUPER_ADMIN').",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Company ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Entreprise supprimée',
+              content: {
+                'application/json': {
+                  example: { success: true, message: 'Company deleted successfully' }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: 'Accès refusé (rôle différent de SUPER_ADMIN)' },
+            404: { description: 'Company not found' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // COMPANIES — LISTE PUBLIQUE
+      // Route publique, aucun token requis.
+      // ══════════════════════════════════════════════
+      '/companies/approved': {
+        get: {
+          tags: ['Companies'],
+          summary: 'Liste publique des entreprises approuvées',
+          description: "Route publique — utilisée par exemple pour peupler le champ 'company_name' lors de l'inscription d'un stagiaire ou d'un encadrant. Aucun token requis.",
+          security: [],
+          responses: {
+            200: {
+              description: 'Liste des entreprises approuvées',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    companies: [
+                      { id: 1, name: 'InnovaSoft', logo: 'https://cloudinary.com/...', company_status: 'APPROVED' },
+                      { id: 2, name: 'TechCorp', logo: 'https://cloudinary.com/...', company_status: 'APPROVED' }
+                    ]
+                  }
+                }
+              }
+            },
+            500: { description: 'Erreur serveur' }
+          }
+        }
       }
     }
   },
@@ -1296,3 +1496,4 @@ export const swaggerSetup = (app) => {
 
   console.log('Swagger StageLink → /api-docs');
 };
+ 

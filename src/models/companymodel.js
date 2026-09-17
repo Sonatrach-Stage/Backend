@@ -250,6 +250,15 @@ const Company = {
 
     return result.rows[0];
   },
+  findAll: async () => {
+    const result = await pool.query(`
+      SELECT *
+      FROM company
+      ORDER BY created_at DESC
+    `);
+
+    return result.rows;
+  },
 };
 
 export default Company;
