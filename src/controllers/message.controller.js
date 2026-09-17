@@ -25,8 +25,14 @@ export const getOrCreateConversation = async (req, res) => {
       });
     }
 const user= await User.findByName(targetUserName);
-const targetUserId= user.id;
 
+if (!user) {
+  return res.status(404).json({
+    message: "Utilisateur introuvable."
+  });
+}
+
+const targetUserId = user.id;
 
 
     if (Number(currentUserId) === Number(targetUserId)) {
