@@ -297,8 +297,10 @@ console.log("liliana:",req.internInfo);
   const updatedRows = await Intern.assignSupervisor(
     supervisor.id,
     intern.id
-  );
-
+  );const updateStatus = await Intern.updateStatus(
+  intern.user_id,
+"supervisor_assigned"
+);
   // =========================================
   // 8. Vérifier que l'affectation a réellement
   //    été effectuée
@@ -459,5 +461,86 @@ export const getCompanyInterns = async (req, res) => {
     success: true,
     count: interns.length,
     interns,
+  });
+};
+
+export const activateSupervisor = async (req, res) => {
+  const { superId } = req.params;
+
+  const companyId = req.adminInfo?.company_id;
+console.log("companyId*: ",companyId);
+  if (!companyId) {
+    const error = new Error(
+      "Impossible de déterminer votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // -----------------------------------------
+  // Vérifier que le stagiaire existe
+  // et appartient à cette entreprise
+  // -----------------------------------------
+
+  const supervisor = await Supervisor.findById(superId);
+
+console.log("superId*: ",superId);
+  if (!supervisor) {
+    const error = new Error("Encadrant introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (supervisor.company_id !== companyId) {
+    const error = new Error(
+      "Vous n'êtes pas autorisé à gérer ce stagiaire."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  await User.activate(supervisor.user_id);
+
+
+  return res.status(200).json({
+    success: true,
+    message:
+      "Encadrant activé.",
+  });
+};
+export const deactivateSupervisor = async (req, res) => {
+  const { superId } = req.params;
+
+  const companyId = req.adminInfo?.company_id;
+
+  if (!companyId) {
+    const error = new Error(
+      "Impossible de déterminer votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const supervisor = await Supervisor.findById(superId);
+
+  if (!supervisor) {
+    const error = new Error("Encadrant introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (supervisor.company_id !== companyId) {
+    const error = new Error(
+      "Vous n'êtes pas autorisé à gérer ce stagiaire."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  await User.deactivate(supervisor.user_id);
+
+  return res.status(200).json({
+    success: true,
+    message: "Compte de l'encadrant désactivé avec succès.",
   });
 };

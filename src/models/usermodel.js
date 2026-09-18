@@ -111,7 +111,41 @@ create: async (userData) => {
 
     return result.rowCount;
   },
+  updateProfile: async (id, data) => {
+  const result = await pool.query(
+    `UPDATE users
+     SET name = COALESCE($1, name),
+         phone = COALESCE($2, phone)
+     WHERE id = $3
+     RETURNING id, name, email, phone, profil_image, profil_image_public_id`,
+    [
+      data.name ?? null,
+      data.phone ?? null,
+      id
+    ]
+  );
 
+  return result.rows[0];
+},updateProfile: async (user_id, data) => {
+  const result = await pool.query(
+    `UPDATE supervisor
+     SET job = COALESCE($1, job),
+         department = COALESCE($2, department),
+         specialization = COALESCE($3, specialization),
+         years_of_experience = COALESCE($4, years_of_experience)
+     WHERE user_id = $5
+     RETURNING *`,
+    [
+      data.job ?? null,
+      data.department ?? null,
+      data.specialization ?? null,
+      data.years_of_experience ?? null,
+      user_id
+    ]
+  );
+
+  return result.rows[0];
+},
   getUsersList: async () => {
     const result = await pool.query(
       `SELECT * FROM users`

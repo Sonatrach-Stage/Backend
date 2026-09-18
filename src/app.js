@@ -9,6 +9,7 @@ import actandtach from './routes/tachesandactivities.routes.js';
 import adminsupRoutes from'./routes/adminsup.routes.js';
 import { swaggerSetup } from './config/swagger.js';
 import companyRoutes from "./routes/company.routes.js";
+import profileRoutes from "./routes/profile.routes.js";
 const app = express();
 
 app.use(cors());
@@ -22,6 +23,7 @@ app.use("/actandtach",actandtach);
 app.use("/chat",chatRoutes);
 app.use("/adminsup",adminsupRoutes);
 app.use("/companies", companyRoutes);
+app.use("/profile", profileRoutes);
 swaggerSetup(app);
 app.get("/",(req,res)=>{
   res.json("the server of our project is running")

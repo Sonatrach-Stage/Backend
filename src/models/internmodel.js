@@ -147,6 +147,38 @@ return result.rows[0];
 
     return result.rowCount;
   },
+  updateStatus: async (user_id, status) => {
+  const result = await pool.query(
+    `UPDATE intern
+     SET status = $1
+     WHERE user_id = $2
+     RETURNING *`,
+    [status, user_id]
+  );
+
+  return result.rows[0];
+},
+updateProfile: async (user_id, data) => {
+  const result = await pool.query(
+    `UPDATE intern
+     SET sector = $1,
+         studies_level = $2,
+         establishment = $3,
+         start_date = $4,
+         end_date = $5
+     WHERE user_id = $6`,
+    [
+      data.sector,
+      data.studies_level,
+      data.establishment,
+      data.start_date,
+      data.end_date,
+      user_id
+    ]
+  );
+
+  return result.rowCount;
+},
   findPendingByCompanyId:async(company_id)=>{
 const result = await pool.query("SELECT i.* FROM intern i WHERE i.company_id=$1 AND i.con_status= 'pending'",[company_id]);
 return result.rows;

@@ -9,6 +9,8 @@ import {
   deactivateIntern,
   getCompanySupervisors,
   getCompanyInterns,
+  activateSupervisor,
+  deactivateSupervisor
 } from "../controllers/adminsec.controller.js";
 
 import { protect, restrictTo } from "../middlewares/auth.middleware.js";
@@ -66,6 +68,17 @@ router.patch(
 router.patch(
   "/interns/:internId/desactivate",
   asyncHandler(deactivateIntern)
+);
+// Activer un compte encadrant
+router.patch(
+  "/supervisors/:superId/activate",
+  asyncHandler(activateSupervisor)
+);
+
+// Désactiver un compte encadrant
+router.patch(
+  "/supervisors/:superId/desactivate",
+  asyncHandler(deactivateSupervisor)
 );
 
 // =====================================================

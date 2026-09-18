@@ -13,6 +13,26 @@ findByCompanyId : async (company_id)=>{
 const result = await pool.query('SELECT * FROM supervisor s WHERE s.company_id=$1',[company_id]);
 return result.rows;
 },
+updateProfile: async (user_id, data) => {
+  const result = await pool.query(
+    `UPDATE supervisor
+     SET job = COALESCE($1, job),
+         department = COALESCE($2, department),
+         specialization = COALESCE($3, specialization),
+         years_of_experience = COALESCE($4, years_of_experience)
+     WHERE user_id = $5
+     RETURNING *`,
+    [
+      data.job ?? null,
+      data.department ?? null,
+      data.specialization ?? null,
+      data.years_of_experience ?? null,
+      user_id
+    ]
+  );
+
+  return result.rows[0];
+},
 getAllSupervisors : async ()=>{
   const result = await pool.query('SELECT * FROM supervisor ');
   return result.rows;
