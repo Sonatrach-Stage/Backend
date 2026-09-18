@@ -24,7 +24,7 @@ const options = {
       title: 'StageLink — API',
       version: '1.0.0',
       description:
-        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire)',
+        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire) · Profil (consultation et modification)',
     },
     servers,
     components: {
@@ -256,6 +256,27 @@ const options = {
           properties: {
             content: { type: 'string', example: 'En fait je peux venir demain matin.' }
           }
+        },
+
+        // ── Profil ─────────────────────────────────────
+        UpdateMyProfile: {
+          type: 'object',
+          description:
+            "Tous les champs sont optionnels — seuls les champs fournis sont mis à jour. 'name' et 'phone' s'appliquent à tous les rôles. Les champs job/department/specialization/years_of_experience ne sont pris en compte que si l'utilisateur connecté est SUPERVISOR. Les champs sector/studies_level/establishment/start_date/end_date ne sont pris en compte que si l'utilisateur connecté est INTERN (les envoyer pour un autre rôle n'a aucun effet).",
+          properties: {
+            profil_image: { type: 'string', format: 'binary', description: 'Nouvelle photo de profil (JPG ou PNG uniquement)' },
+            name: { type: 'string', example: 'Katia Benali' },
+            phone: { type: 'string', example: '0550000099' },
+            job: { type: 'string', example: 'Lead Developer', description: 'SUPERVISOR uniquement' },
+            department: { type: 'string', example: 'R&D', description: 'SUPERVISOR uniquement' },
+            specialization: { type: 'string', example: 'Backend Node.js', description: 'SUPERVISOR uniquement' },
+            years_of_experience: { type: 'integer', example: 6, description: 'SUPERVISOR uniquement' },
+            sector: { type: 'string', example: 'Développement Web', description: 'INTERN uniquement' },
+            studies_level: { type: 'string', example: 'Master 2', description: 'INTERN uniquement' },
+            establishment: { type: 'string', example: 'ESI Alger', description: 'INTERN uniquement' },
+            start_date: { type: 'string', format: 'date', example: '2026-06-01', description: 'INTERN uniquement' },
+            end_date: { type: 'string', format: 'date', example: '2026-09-01', description: 'INTERN uniquement' }
+          }
         }
       }
     },
@@ -267,6 +288,7 @@ const options = {
       { name: 'Super Admin' },
       { name: 'Companies' },
       { name: 'Chat' },
+      { name: 'Profil' },
     ],
     paths: {
 
@@ -931,9 +953,52 @@ const options = {
           }
         }
       },
-
-      // ══════════════════════════════════════════════
-      // TÂCHES & ACTIVITÉS — ENCADRANT (SUPERVISOR)
+      '/adminsec/supervisors/{superId}/activate': {
+        patch: {
+          tags: ['Admin Sec'],
+          summary: 'Activer le compte d\'un encadrant',
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'superId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Supervisor ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Encadrant activé',
+              content: {
+                'application/json': {
+                  example: { success: true, message: 'Encadrant activé.' }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise, ou l'encadrant appartient à une autre entreprise" },
+            404: { description: 'Encadrant introuvable' }
+          }
+        }
+      },
+      '/adminsec/supervisors/{superId}/desactivate': {
+        patch: {
+          tags: ['Admin Sec'],
+          summary: "Désactiver le compte d'un encadrant",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'superId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Supervisor ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Encadrant désactivé',
+              content: {
+                'application/json': {
+                  example: { success: true, message: "Compte de l'encadrant désactivé avec succès." }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer l'entreprise, ou l'encadrant appartient à une autre entreprise" },
+            404: { description: 'Encadrant introuvable' }
+          }
+        }
+      },
       // Toutes les routes nécessitent : protect
       // ══════════════════════════════════════════════
       '/actandtach/sup/taches': {
@@ -1637,6 +1702,98 @@ const options = {
             },
             404: { description: "Message introuvable ou l'utilisateur n'en est pas l'auteur" },
             500: { description: 'Erreur serveur' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // PROFIL
+      // Toutes les routes nécessitent : protect
+      // ══════════════════════════════════════════════
+      '/profile': {
+        get: {
+          tags: ['Profil'],
+          summary: 'Mon profil',
+          description: "Protégé par protect. Retourne le profil complet enrichi selon le rôle (INTERN, SUPERVISOR, SECONDARY_ADMIN, SUPER_ADMIN).",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Profil récupéré',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    role: 'INTERN',
+                    profile: {
+                      id: 12, name: 'Katia Benali', email: 'katia.benali@example.com', phone: '0550000011',
+                      company_id: 2, sector: 'Développement Web', studies_level: 'Master 2',
+                      establishment: 'ESI Alger', start_date: '2026-06-01', end_date: '2026-09-01'
+                    }
+                  }
+                }
+              }
+            },
+            404: { description: 'Profil introuvable' },
+            500: { description: 'Erreur lors de la récupération du profil' }
+          }
+        }
+      },
+      '/profile/me': {
+        patch: {
+          tags: ['Profil'],
+          summary: 'Modifier mon profil',
+          description: "Protégé par protect. Les champs communs (name, phone) s'appliquent à tous les rôles ; les autres champs ne sont pris en compte que pour le rôle correspondant (voir schema).",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            content: {
+              'multipart/form-data': {
+                schema: { $ref: '#/components/schemas/UpdateMyProfile' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Profil modifié',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Profil modifié avec succès.',
+                    profile: { id: 12, name: 'Katia Benali', phone: '0550000099', sector: 'Développement Web' }
+                  }
+                }
+              }
+            },
+            400: { description: 'La photo de profil doit être au format JPG ou PNG' },
+            403: { description: 'Rôle introuvable' },
+            500: { description: 'Erreur lors de la modification du profil' }
+          }
+        }
+      },
+      '/profile/{userId}': {
+        get: {
+          tags: ['Profil'],
+          summary: "Profil d'un autre utilisateur",
+          description: "Protégé par protect. Le SUPER_ADMIN peut consulter n'importe quel profil. Les autres rôles ne peuvent consulter que les profils appartenant à leur propre entreprise.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'userId', in: 'path', required: true, schema: { type: 'integer' }, description: 'User ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Profil récupéré',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    profile: { id: 20, name: 'Amine Boudiaf', email: 'amine.boudiaf@example.com', company_id: 2, job: 'Lead Developer' }
+                  }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer votre entreprise, ou le profil demandé appartient à une autre entreprise" },
+            404: { description: 'Profil introuvable' },
+            500: { description: 'Erreur lors de la récupération du profil' }
           }
         }
       }
