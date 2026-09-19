@@ -93,6 +93,14 @@ return result.rowCount;
 findByNameAndCompany: async (name,company_id)=>{
   const result = await pool.query("SELECT s.* FROM supervisor s JOIN users u ON s.user_id=u.id WHERE u.name=$1 AND s.company_id=$2",[name,company_id]);
   return result.rows[0];
+},
+getActiveByCompany: async (company_id)=>{
+  const result = await pool.query("SELECT u.name,u.email,s.job,s.department,s.specialization,s.years_of_experience FROM users u JOIN supervisor s ON s.user_id=u.id WHERE u.is_active=TRUE AND s.company_id=$1",[company_id]);
+  return result.rows;
+},
+getDesactiveByCompany: async (company_id)=>{
+  const result = await pool.query("SELECT u.name,u.email,s.job,s.department,s.specialization,s.years_of_experience FROM users u JOIN supervisor s ON s.user_id=u.id WHERE u.is_active=FALSE AND s.company_id=$1",[company_id]);
+  return result.rows;
 }
 };
 

@@ -203,6 +203,14 @@ return result.rows;
     const result= await pool.query("SELECT u.name FROM users u JOIN intern i ON i.user_id=u.id WHERE i.id=$1",[id]);
     return result.rows[0];
   },
+  getActiveByCompany: async (company_id)=>{
+  const result = await pool.query("SELECT u.name,u.email,i.intern_type,i.sector,i.studies_level,i.establishment,i.status,i.con_status FROM users u JOIN intern i ON i.user_id=u.id WHERE u.is_active=TRUE AND i.company_id=$1",[company_id]);
+  return result.rows;
+},
+  getDesactiveByCompany: async (company_id)=>{
+  const result = await pool.query("SELECT u.name,u.email,i.intern_type,i.sector,i.studies_level,i.establishment,i.status,i.con_status FROM users u JOIN intern i ON i.user_id=u.id WHERE u.is_active=FALSE AND i.company_id=$1",[company_id]);
+  return result.rows;
+}
 
 };
 

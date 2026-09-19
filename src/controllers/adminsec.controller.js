@@ -544,3 +544,82 @@ export const deactivateSupervisor = async (req, res) => {
     message: "Compte de l'encadrant désactivé avec succès.",
   });
 };
+export const getActiveInterns = async(req,res)=>{
+    const companyId = req.adminInfo?.company_id;
+
+  if (!companyId) {
+    const error = new Error(
+      "Impossible de déterminer votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const actinterns = await Intern.getActiveByCompany(companyId);
+
+  return res.status(200).json({
+    success: true,
+    count: actinterns.length,
+    actinterns,
+  });
+};
+
+export const getDesactiveInterns = async(req,res)=>{
+    const companyId = req.adminInfo?.company_id;
+
+  if (!companyId) {
+    const error = new Error(
+      "Impossible de déterminer votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const desinterns = await Intern.getDesactiveByCompany(companyId);
+
+  return res.status(200).json({
+    success: true,
+    count: desinterns.length,
+    desinterns,
+  });
+};
+
+export const getActiveSupervisor = async(req,res)=>{
+    const companyId = req.adminInfo?.company_id;
+
+  if (!companyId) {
+    const error = new Error(
+      "Impossible de déterminer votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const actinterns = await Supervisor.getActiveByCompany(companyId);
+
+  return res.status(200).json({
+    success: true,
+    count: actinterns.length,
+    actinterns,
+  });
+};
+
+export const getDesactiveSupervisor = async(req,res)=>{
+    const companyId = req.adminInfo?.company_id;
+
+  if (!companyId) {
+    const error = new Error(
+      "Impossible de déterminer votre entreprise."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const desinterns = await Supervisor.getDesactiveByCompany(companyId);
+
+  return res.status(200).json({
+    success: true,
+    count: desinterns.length,
+    desinterns,
+  });
+};

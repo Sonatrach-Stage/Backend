@@ -10,7 +10,11 @@ import {
   getCompanySupervisors,
   getCompanyInterns,
   activateSupervisor,
-  deactivateSupervisor
+  deactivateSupervisor,
+  getActiveInterns,
+  getDesactiveInterns,
+  getActiveSupervisor,
+  getDesactiveSupervisor
 } from "../controllers/adminsec.controller.js";
 
 import { protect, restrictTo } from "../middlewares/auth.middleware.js";
@@ -95,6 +99,22 @@ router.get(
 router.patch(
   "/interns/:internId/supervisor",
   asyncHandler(assignSupervisor)
+);
+router.get(
+  "/interns/actives",
+  asyncHandler(getActiveInterns)
+);
+router.get(
+  "/interns/desactives",
+  asyncHandler(getDesactiveInterns)
+);
+router.get(
+  "/supervisors/actives",
+  asyncHandler(getActiveSupervisor)
+);
+router.get(
+  "/supervisors/desactives",
+  asyncHandler(getDesactiveSupervisor)
 );
 
 export default router;

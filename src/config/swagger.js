@@ -799,6 +799,58 @@ const options = {
           }
         }
       },
+      '/adminsec/interns/actives': {
+        get: {
+          tags: ['Admin Sec'],
+          summary: "Liste des stagiaires actifs de l'entreprise",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Filtre les stagiaires dont le compte utilisateur (is_active) est TRUE.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des stagiaires actifs',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    actinterns: [
+                      { name: 'Katia Benali', email: 'katia.benali@example.com', intern_type: 'intern_PFE', sector: 'Développement Web', studies_level: 'Master 2', establishment: 'ESI Alger', status: 'active', con_status: 'APPROVED' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Accès refusé ou impossible de déterminer l'entreprise" }
+          }
+        }
+      },
+      '/adminsec/interns/desactives': {
+        get: {
+          tags: ['Admin Sec'],
+          summary: "Liste des stagiaires désactivés de l'entreprise",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Filtre les stagiaires dont le compte utilisateur (is_active) est FALSE.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des stagiaires désactivés',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    desinterns: [
+                      { name: 'Ahmed Slimani', email: 'ahmed.slimani@example.com', intern_type: 'intern_PFC', sector: 'Réseaux', studies_level: 'Licence 3', establishment: 'USTHB', status: 'waiting', con_status: 'rejected' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Accès refusé ou impossible de déterminer l'entreprise" }
+          }
+        }
+      },
       '/adminsec/interns/{internId}/approve': {
         patch: {
           tags: ['Admin Sec'],
@@ -943,6 +995,58 @@ const options = {
                     count: 1,
                     supervisors: [
                       { id: 3, user_id: 20, company_id: 2, job: 'Lead Developer', department: 'R&D', specialization: 'Backend Node.js', years_of_experience: 5 }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Accès refusé ou impossible de déterminer l'entreprise" }
+          }
+        }
+      },
+      '/adminsec/supervisors/actives': {
+        get: {
+          tags: ['Admin Sec'],
+          summary: "Liste des encadrants actifs de l'entreprise",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Filtre les encadrants dont le compte utilisateur (is_active) est TRUE.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des encadrants actifs',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    actinterns: [
+                      { name: 'Amine Boudiaf', email: 'amine.boudiaf@example.com', job: 'Lead Developer', department: 'R&D', specialization: 'Backend Node.js', years_of_experience: 5 }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' },
+            403: { description: "Accès refusé ou impossible de déterminer l'entreprise" }
+          }
+        }
+      },
+      '/adminsec/supervisors/desactives': {
+        get: {
+          tags: ['Admin Sec'],
+          summary: "Liste des encadrants désactivés de l'entreprise",
+          description: "Protégé par protect + restrictTo('SECONDARY_ADMIN'). Filtre les encadrants dont le compte utilisateur (is_active) est FALSE.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des encadrants désactivés',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    count: 1,
+                    desinterns: [
+                      { name: 'Sofiane Khaldi', email: 'sofiane.khaldi@example.com', job: 'DevOps Engineer', department: 'Infra', specialization: 'CI/CD', years_of_experience: 3 }
                     ]
                   }
                 }
