@@ -1,5 +1,5 @@
-import { v2 as cloudinary } from 'cloudinary';
-import dotenv from 'dotenv';
+import { v2 as cloudinary } from "cloudinary";
+import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -23,11 +23,12 @@ export const uploadToCloudinary = async (filePath, folder) => {
 
   const result = await cloudinary.uploader.upload(filePath, {
     folder: `gestion-stages/${folder}`,
-    resource_type: 'auto',
+    resource_type: "auto",
   });
 
-  return result.secure_url;
+  return {
+    secure_url: result.secure_url,
+    public_id: result.public_id,
+  };
 };
-
-
 export default cloudinary;

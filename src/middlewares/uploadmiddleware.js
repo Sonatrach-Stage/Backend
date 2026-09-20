@@ -21,10 +21,15 @@ const storage = multer.diskStorage({
 // =====================================================
 
 const fileFilter = (req, file, cb) => {
+
   const allowedTypes = [
     "image/jpeg",
     "image/png",
     "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
@@ -32,7 +37,7 @@ const fileFilter = (req, file, cb) => {
   } else {
     cb(
       new Error(
-        "Format non supporté. Veuillez envoyer un fichier JPG, PNG ou PDF."
+        "Format non supporté. Veuillez envoyer un fichier JPG, PNG, PDF, DOC, DOCX, PPT ou PPTX."
       ),
       false
     );

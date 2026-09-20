@@ -34,6 +34,9 @@ markAsDone: async(tache_id)=>{
 markAsAbandoned: async(tache_id)=>{
   const result = await pool.query("UPDATE taches SET status='abandoned' WHERE id=$1",[tache_id]);
   return result.rowCount;
+},findByTitle: async(tache_title)=>{
+  const result = await pool.query("SELECT t.id FROM taches t WHERE t.title= $1",[tache_title]);
+  return result.rows[0]
 }
 
 };

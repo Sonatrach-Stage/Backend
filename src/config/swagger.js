@@ -24,7 +24,7 @@ const options = {
       title: 'StageLink — API',
       version: '1.0.0',
       description:
-        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire) · Profil (consultation et modification)',
+        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire) · Profil (consultation et modification) · Documents (création, versions, reviews)',
     },
     servers,
     components: {
@@ -277,6 +277,34 @@ const options = {
             start_date: { type: 'string', format: 'date', example: '2026-06-01', description: 'INTERN uniquement' },
             end_date: { type: 'string', format: 'date', example: '2026-09-01', description: 'INTERN uniquement' }
           }
+        },
+
+        // ── Documents ──────────────────────────────────
+        CreateDocument: {
+          type: 'object',
+          required: ['title', 'document_type'],
+          properties: {
+            title: { type: 'string', example: 'Rapport de stage - Semaine 1' },
+            description: { type: 'string', example: 'Résumé des tâches effectuées durant la première semaine.' },
+            document_type: { type: 'string', example: 'rapport_hebdomadaire' },
+            task_title: { type: 'string', example: 'Intégrer le module de paiement', description: "Optionnel. Titre exact d'une tâche existante à lier au document (recherché via Taches.findByTitle). Si introuvable, le document est créé sans tâche liée (task_id = null)." }
+          }
+        },
+        AddDocumentVersion: {
+          type: 'object',
+          required: ['file'],
+          properties: {
+            file: { type: 'string', format: 'binary', description: 'Fichier de la nouvelle version du document (obligatoire)' }
+          }
+        },
+        ReviewDocument: {
+          type: 'object',
+          required: ['version_id', 'status'],
+          properties: {
+            version_id: { type: 'integer', example: 3, description: 'ID de la version du document concernée par la review' },
+            status: { type: 'string', enum: ['APPROVED', 'REVISION_REQUIRED', 'REJECTED'], example: 'APPROVED' },
+            comment: { type: 'string', example: 'Bon travail, quelques fautes à corriger page 2.' }
+          }
         }
       }
     },
@@ -289,6 +317,7 @@ const options = {
       { name: 'Companies' },
       { name: 'Chat' },
       { name: 'Profil' },
+      { name: 'Documents' },
     ],
     paths: {
 
@@ -1898,6 +1927,248 @@ const options = {
             403: { description: "Impossible de déterminer votre entreprise, ou le profil demandé appartient à une autre entreprise" },
             404: { description: 'Profil introuvable' },
             500: { description: 'Erreur lors de la récupération du profil' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // DOCUMENTS — STAGIAIRE (créer, consulter, versionner)
+      // ══════════════════════════════════════════════
+      '/documents': {
+        post: {
+          tags: ['Documents'],
+          summary: 'Créer un document',
+          description: "Protégé par protect + restrictTo('INTERN'). Si task_title est fourni mais ne correspond à aucune tâche existante, le document est quand même créé (task_id = null), sans erreur.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateDocument' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Document créé',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Document créé avec succès.',
+                    document: { id: 9, intern_id: 5, task_id: 4, title: 'Rapport de stage - Semaine 1', description: 'Résumé des tâches effectuées durant la première semaine.', document_type: 'rapport_hebdomadaire', status: null, created_at: '2026-06-02T10:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: 'Titre ou type de document manquant' },
+            403: { description: "Seul un stagiaire peut créer un document (token d'un autre rôle)" }
+          }
+        }
+      },
+      '/documents/pending': {
+        get: {
+          tags: ['Documents'],
+          summary: 'Documents en attente de review',
+          description: "Protégé par protect + restrictTo('SUPERVISOR'). Retourne les documents au statut PENDING des stagiaires assignés à l'encadrant connecté, avec la dernière version jointe.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Documents en attente',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Documents en attente récupérés avec succès.',
+                    documents: [
+                      {
+                        id: 9, title: 'Rapport de stage - Semaine 1', description: '...', document_type: 'rapport_hebdomadaire',
+                        status: 'PENDING', task_id: 4, created_at: '2026-06-02T10:00:00.000Z', updated_at: '2026-06-02T10:00:00.000Z',
+                        intern_id: 5, intern_name: 'Katia Benali', intern_email: 'katia.benali@example.com',
+                        version_id: 3, version_number: 1, file_name: 'rapport_s1.pdf', file_url: 'https://cloudinary.com/...', version_created_at: '2026-06-02T10:05:00.000Z'
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: 'Accès réservé aux superviseurs' }
+          }
+        }
+      },
+      '/documents/my': {
+        get: {
+          tags: ['Documents'],
+          summary: 'Mes documents',
+          description: "Protégé par protect + restrictTo('INTERN').",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des documents du stagiaire connecté',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Documents récupérés avec succès.',
+                    documents: [
+                      { id: 9, intern_id: 5, task_id: 4, title: 'Rapport de stage - Semaine 1', document_type: 'rapport_hebdomadaire', status: 'PENDING', created_at: '2026-06-02T10:00:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: 'Accès réservé aux stagiaires' }
+          }
+        }
+      },
+      '/documents/{id}': {
+        get: {
+          tags: ['Documents'],
+          summary: "Détails d'un document",
+          description: "Protégé par protect + restrictTo('INTERN'). Le document doit appartenir au stagiaire connecté.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Document récupéré',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Document récupéré avec succès.',
+                    document: { id: 9, intern_id: 5, task_id: 4, title: 'Rapport de stage - Semaine 1', document_type: 'rapport_hebdomadaire', status: 'PENDING' }
+                  }
+                }
+              }
+            },
+            403: { description: "Accès réservé aux stagiaires, ou ce document n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Document introuvable' }
+          }
+        }
+      },
+      '/documents/{id}/versions': {
+        get: {
+          tags: ['Documents'],
+          summary: "Versions d'un document",
+          description: "Protégé par protect + restrictTo('INTERN'). Le document doit appartenir au stagiaire connecté.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Liste des versions',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Versions récupérées avec succès.',
+                    versions: [
+                      { id: 3, document_id: 9, version_number: 1, file_name: 'rapport_s1.pdf', file_url: 'https://cloudinary.com/...', uploaded_by: 12, created_at: '2026-06-02T10:05:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: "Accès réservé aux stagiaires, ou ce document n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Document introuvable' }
+          }
+        },
+        post: {
+          tags: ['Documents'],
+          summary: 'Ajouter une nouvelle version au document',
+          description: "Protégé par protect + restrictTo('INTERN'). Le numéro de version est calculé automatiquement (dernière version + 1). Repasse le document au statut PENDING.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'multipart/form-data': {
+                schema: { $ref: '#/components/schemas/AddDocumentVersion' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Nouvelle version ajoutée',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Version V2 ajoutée avec succès.',
+                    version: { id: 4, document_id: 9, version_number: 2, file_name: 'rapport_s1_v2.pdf', file_url: 'https://cloudinary.com/...', uploaded_by: 12, created_at: '2026-06-03T14:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: 'Aucun fichier envoyé' },
+            403: { description: "Accès réservé aux stagiaires, ou ce document n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Document introuvable' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // DOCUMENTS — ENCADRANT (review)
+      // ══════════════════════════════════════════════
+      '/documents/{id}/review': {
+        post: {
+          tags: ['Documents'],
+          summary: 'Évaluer une version de document',
+          description: "Protégé par protect + restrictTo('SUPERVISOR'). Le document doit être dans la liste des documents en attente de l'encadrant connecté (stagiaires qui lui sont assignés).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ReviewDocument' }
+              }
+            }
+          },
+          responses: {
+            201: {
+              description: 'Review enregistrée',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Review enregistrée avec succès.',
+                    review: { id: 2, document_id: 9, version_id: 3, supervisor_id: 3, comment: 'Bon travail, quelques fautes à corriger page 2.', status: 'APPROVED', created_at: '2026-06-03T15:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: "version_id ou status manquant, statut invalide, ou la version n'appartient pas à ce document" },
+            403: { description: "Accès réservé aux superviseurs, ou ce document ne fait pas partie des documents en attente de l'encadrant connecté" },
+            404: { description: 'Document introuvable' }
+          }
+        }
+      },
+      '/documents/{id}/reviews': {
+        get: {
+          tags: ['Documents'],
+          summary: "Historique des reviews d'un document",
+          description: "Protégé par protect + restrictTo('INTERN'). Le document doit appartenir au stagiaire connecté.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Liste des reviews',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Reviews récupérées avec succès.',
+                    reviews: [
+                      { id: 2, document_id: 9, version_id: 3, supervisor_id: 3, comment: 'Bon travail, quelques fautes à corriger page 2.', status: 'APPROVED', created_at: '2026-06-03T15:00:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: "Accès réservé aux stagiaires, ou ce document n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Document introuvable' }
           }
         }
       }

@@ -10,6 +10,7 @@ import adminsupRoutes from'./routes/adminsup.routes.js';
 import { swaggerSetup } from './config/swagger.js';
 import companyRoutes from "./routes/company.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
+import documentRoutes from "./routes/document.routes.js"
 const app = express();
 
 app.use(cors());
@@ -24,6 +25,7 @@ app.use("/chat",chatRoutes);
 app.use("/adminsup",adminsupRoutes);
 app.use("/companies", companyRoutes);
 app.use("/profile", profileRoutes);
+app.use("/documents", documentRoutes);
 swaggerSetup(app);
 app.get("/",(req,res)=>{
   res.json("the server of our project is running")
