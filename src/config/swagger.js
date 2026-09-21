@@ -2356,7 +2356,77 @@ const options = {
             404: { description: 'Document introuvable' }
           }
         }
-      }
+      },
+              UpdateDocument: {
+          type: 'object',
+          description: "Toutes les propriétés sont optionnelles, mais AU MOINS UNE doit être fournie (sinon 400). Les champs non fournis conservent leur valeur actuelle (COALESCE côté SQL).",
+          properties: {
+            title: { type: 'string', example: 'Rapport de stage - Semaine 1 (corrigé)' },
+            description: { type: 'string', example: 'Version corrigée après retour de l\'encadrant.' },
+            document_type: { type: 'string', example: 'rapport_hebdomadaire' },
+            task_id: {
+              type: 'integer',
+              example: 4,
+              description: "Attention : ici c'est bien l'ID numérique de la tâche (contrairement à la création qui attend task_title)."
+            }
+          }
+        },
+              '/documents/search': {
+        get: {
+          tags: ['Documents'],
+          summary: 'Recherche intelligente dans les documents',
+          description:
+            "Protégé par protect uniquement (pas de restrictTo) : le comportement dépend du rôle détecté. " +
+            "Si l'utilisateur est un STAGIAIRE, la recherche est limitée à ses propres documents. " +
+            "Si l'utilisateur est un ENCADRANT, la recherche porte sur les documents des stagiaires qui lui sont assignés. " +
+            "Tout autre rôle reçoit un 403. " +
+            "La recherche est effectuée sur le titre, la description, le nom du fichier et le CONTENU TEXTE des versions (extrait à l'upload), " +
+            "avec correspondance exacte (ILIKE) et correspondance approximative (similarity / pg_trgm, seuil 0.3) activée uniquement si le terme fait au moins 4 caractères. " +
+            "Les résultats sont triés par relevance_score décroissant puis par updated_at.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'q',
+              in: 'query',
+              required: true,
+              schema: { type: 'string', example: 'paiement' },
+              description: "Terme de recherche. Obligatoire et non vide (les espaces seuls sont refusés → 400). Le terme est trimé avant traitement."
+            }
+          ],
+          responses: {
+            200: {
+              description: 'Résultats de la recherche',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Recherche effectuée avec succès.',
+                    search: 'paiement',
+                    documents: [
+                      {
+                        id: 9, intern_id: 5, task_id: 4,
+                        title: 'Rapport de stage - Semaine 1',
+                        description: 'Résumé des tâches effectuées durant la première semaine.',
+                        document_type: 'rapport_hebdomadaire',
+                        status: 'PENDING',
+                        created_at: '2026-06-02T10:00:00.000Z',
+                        updated_at: '2026-06-03T14:00:00.000Z',
+                        intern_name: 'Katia Benali',
+                        version_id: 4, version_number: 2,
+                        file_name: 'rapport_s1_v2.pdf',
+                        file_url: 'https://cloudinary.com/...',
+                        relevance_score: 0.9
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            400: { description: "Le terme de recherche (q) est manquant ou vide" },
+            403: { description: "Accès refusé : l'utilisateur connecté n'est ni stagiaire ni encadrant" }
+          }
+        }
+      },
+      
     }
   },
   apis: [],
