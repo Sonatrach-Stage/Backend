@@ -29,6 +29,7 @@ export const uploadToCloudinary = async (filePath, folder) => {
   return {
     secure_url: result.secure_url,
     public_id: result.public_id,
+    resource_type: result.resource_type
   };
 };
 export default cloudinary;

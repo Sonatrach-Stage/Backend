@@ -8,8 +8,8 @@ import {
   getDocumentVersions,
   addDocumentVersion,
   getPendingDocuments,
-  reviewDocument,
-  getDocumentReviews
+  reviewDocument,getDocumentVersion,
+  getDocumentReviews,updateDocument,deleteDocument,searchDocuments
 } from "../controllers/document.controller.js";
 
 import {
@@ -40,7 +40,11 @@ router.get(
   restrictTo("INTERN"),
   asyncHandler(getMyDocuments)
 );
-
+router.get(
+  "/search",
+  protect,
+  asyncHandler(searchDocuments)
+);
 router.get(
   "/:id",
   protect,
@@ -72,6 +76,23 @@ router.get(
   protect,
   restrictTo("INTERN"),
   asyncHandler(getDocumentReviews)
+);
+router.put(
+  "/:id",
+  protect,
+  restrictTo("INTERN"),
+  asyncHandler(updateDocument)
+);
+router.delete(
+  "/:id",
+  protect,
+  restrictTo("INTERN"),
+  asyncHandler(deleteDocument)
+);
+router.get(
+  "/:id/versions/:versionId",
+  protect,
+  asyncHandler(getDocumentVersion)
 );
 
 export default router;

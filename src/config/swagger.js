@@ -24,7 +24,7 @@ const options = {
       title: 'StageLink — API',
       version: '1.0.0',
       description:
-        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire) · Profil (consultation et modification) · Documents (création, versions, reviews)',
+        'API StageLink | Auth (inscription, connexion, OTP, mot de passe) · Admin Secondaire (gestion des stagiaires & encadrants) · Tâches & Activités (encadrant et stagiaire) · Super Admin (validation des entreprises) · Companies (liste publique) · Chat (conversations encadrant ↔ stagiaire) · Profil (consultation et modification) · Documents (création, modification, suppression, versions, reviews, recherche intelligente)',
     },
     servers,
     components: {
@@ -290,6 +290,21 @@ const options = {
             task_title: { type: 'string', example: 'Intégrer le module de paiement', description: "Optionnel. Titre exact d'une tâche existante à lier au document (recherché via Taches.findByTitle). Si introuvable, le document est créé sans tâche liée (task_id = null)." }
           }
         },
+        UpdateDocument: {
+          type: 'object',
+          description:
+            "Toutes les propriétés sont optionnelles, mais AU MOINS UNE doit être fournie (sinon 400). Les champs non fournis conservent leur valeur actuelle (COALESCE côté SQL). Cette route ne modifie que les métadonnées du document : pour envoyer un nouveau fichier, utiliser POST /documents/{id}/versions.",
+          properties: {
+            title: { type: 'string', example: 'Rapport de stage - Semaine 1 (corrigé)' },
+            description: { type: 'string', example: "Version corrigée après retour de l'encadrant." },
+            document_type: { type: 'string', example: 'rapport_hebdomadaire' },
+            task_id: {
+              type: 'integer',
+              example: 4,
+              description: "Attention : ici c'est bien l'ID numérique de la tâche, contrairement à la création qui attend task_title."
+            }
+          }
+        },
         AddDocumentVersion: {
           type: 'object',
           required: ['file'],
@@ -301,7 +316,7 @@ const options = {
           type: 'object',
           required: ['version_id', 'status'],
           properties: {
-            version_id: { type: 'integer', example: 3, description: 'ID de la version du document concernée par la review' },
+            version_id: { type: 'integer', example: 3, description: "ID de la version du document concernée par la review. NOTE : le contrôleur compare actuellement cette valeur à version_number (1, 2, 3...) et non à l'id de la table document_versions." },
             status: { type: 'string', enum: ['APPROVED', 'REVISION_REQUIRED', 'REJECTED'], example: 'APPROVED' },
             comment: { type: 'string', example: 'Bon travail, quelques fautes à corriger page 2.' }
           }
@@ -2018,6 +2033,67 @@ const options = {
           }
         }
       },
+
+      // ══════════════════════════════════════════════
+      // DOCUMENTS — RECHERCHE INTELLIGENTE
+      // protect uniquement — comportement selon le rôle
+      // ══════════════════════════════════════════════
+      '/documents/search': {
+        get: {
+          tags: ['Documents'],
+          summary: 'Recherche intelligente dans les documents',
+          description:
+            "Protégé par protect uniquement (pas de restrictTo) : le comportement dépend du rôle détecté. " +
+            "Si l'utilisateur est un STAGIAIRE, la recherche est limitée à ses propres documents (Document.searchByIntern). " +
+            "Si l'utilisateur est un ENCADRANT, la recherche porte sur les documents des stagiaires qui lui sont assignés (Document.searchBySupervisor). " +
+            "Tout autre rôle reçoit un 403. " +
+            "La recherche s'effectue sur le titre, la description, le nom du fichier et le CONTENU TEXTE des versions (extrait automatiquement à l'upload), " +
+            "avec correspondance exacte (ILIKE) et correspondance approximative (similarity / pg_trgm, seuil 0.3) activée uniquement si le terme fait au moins 4 caractères. " +
+            "Les résultats sont triés par relevance_score décroissant puis par updated_at décroissant. Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'q',
+              in: 'query',
+              required: true,
+              schema: { type: 'string', example: 'paiement' },
+              description: "Terme de recherche. Obligatoire et non vide (une chaîne composée uniquement d'espaces est refusée → 400). Le terme est trimé avant traitement et renvoyé dans la réponse sous la clé 'search'."
+            }
+          ],
+          responses: {
+            200: {
+              description: 'Résultats de la recherche (exemple côté encadrant)',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Recherche effectuée avec succès.',
+                    search: 'paiement',
+                    documents: [
+                      {
+                        id: 9, intern_id: 5, task_id: 4,
+                        title: 'Rapport de stage - Semaine 1',
+                        description: 'Résumé des tâches effectuées durant la première semaine.',
+                        document_type: 'rapport_hebdomadaire',
+                        status: 'PENDING',
+                        created_at: '2026-06-02T10:00:00.000Z',
+                        updated_at: '2026-06-03T14:00:00.000Z',
+                        intern_name: 'Katia Benali',
+                        version_id: 4, version_number: 2,
+                        file_name: 'rapport_s1_v2.pdf',
+                        file_url: 'https://cloudinary.com/...',
+                        relevance_score: 0.9
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            400: { description: "Le terme de recherche (q) est manquant ou vide" },
+            403: { description: "Accès refusé : l'utilisateur connecté n'est ni stagiaire ni encadrant" }
+          }
+        }
+      },
+
       '/documents/{id}': {
         get: {
           tags: ['Documents'],
@@ -2036,6 +2112,74 @@ const options = {
                     message: 'Document récupéré avec succès.',
                     document: { id: 9, intern_id: 5, task_id: 4, title: 'Rapport de stage - Semaine 1', document_type: 'rapport_hebdomadaire', status: 'PENDING' }
                   }
+                }
+              }
+            },
+            403: { description: "Accès réservé aux stagiaires, ou ce document n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Document introuvable' }
+          }
+        },
+        put: {
+          tags: ['Documents'],
+          summary: 'Modifier un document',
+          description:
+            "Protégé par protect + restrictTo('INTERN'). Le document doit appartenir au stagiaire connecté. " +
+            "Au moins un des champs title, description, document_type ou task_id doit être fourni, sinon 400. " +
+            "Les champs non fournis conservent leur valeur actuelle (COALESCE). " +
+            "Cette route ne modifie que les métadonnées : pour envoyer un nouveau fichier, utiliser POST /documents/{id}/versions.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateDocument' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Document modifié',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Document modifié avec succès.',
+                    document: {
+                      id: 9, intern_id: 5, task_id: 4,
+                      title: 'Rapport de stage - Semaine 1 (corrigé)',
+                      description: "Version corrigée après retour de l'encadrant.",
+                      document_type: 'rapport_hebdomadaire',
+                      status: 'PENDING',
+                      created_at: '2026-06-02T10:00:00.000Z',
+                      updated_at: '2026-06-04T09:00:00.000Z'
+                    }
+                  }
+                }
+              }
+            },
+            400: { description: 'Aucun champ fourni (title, description, document_type et task_id tous absents)' },
+            403: { description: "Accès réservé aux stagiaires, ou ce document n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Document introuvable' }
+          }
+        },
+        delete: {
+          tags: ['Documents'],
+          summary: 'Supprimer un document',
+          description:
+            "Protégé par protect + restrictTo('INTERN'). Le document doit appartenir au stagiaire connecté. Aucun body attendu. " +
+            "Supprime également tous les fichiers associés sur Cloudinary (toutes les versions ayant un public_id) avant la suppression en base.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Document supprimé',
+              content: {
+                'application/json': {
+                  example: { message: 'Document supprimé avec succès.' }
                 }
               }
             },
@@ -2074,7 +2218,7 @@ const options = {
         post: {
           tags: ['Documents'],
           summary: 'Ajouter une nouvelle version au document',
-          description: "Protégé par protect + restrictTo('INTERN'). Le numéro de version est calculé automatiquement (dernière version + 1). Repasse le document au statut PENDING.",
+          description: "Protégé par protect + restrictTo('INTERN'). Le numéro de version est calculé automatiquement (dernière version + 1). Le contenu texte du fichier est extrait et stocké (utilisé par la recherche intelligente). Repasse le document au statut PENDING.",
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
@@ -2094,7 +2238,7 @@ const options = {
                 'application/json': {
                   example: {
                     message: 'Version V2 ajoutée avec succès.',
-                    version: { id: 4, document_id: 9, version_number: 2, file_name: 'rapport_s1_v2.pdf', file_url: 'https://cloudinary.com/...', uploaded_by: 12, created_at: '2026-06-03T14:00:00.000Z' }
+                    version: { id: 4, document_id: 9, version_number: 2, file_name: 'rapport_s1_v2.pdf', file_url: 'https://cloudinary.com/...', public_id: 'documents/abc123', resource_type: 'raw', uploaded_by: 12, created_at: '2026-06-03T14:00:00.000Z' }
                   }
                 }
               }
@@ -2107,13 +2251,54 @@ const options = {
       },
 
       // ══════════════════════════════════════════════
+      // DOCUMENTS — VERSION PRÉCISE (stagiaire OU encadrant)
+      // ══════════════════════════════════════════════
+      '/documents/{id}/versions/{versionId}': {
+        get: {
+          tags: ['Documents'],
+          summary: "Détails d'une version précise",
+          description:
+            "Protégé par protect uniquement (pas de restrictTo) : accessible au STAGIAIRE propriétaire du document ET à l'ENCADRANT auquel ce stagiaire est assigné. " +
+            "Tout autre rôle reçoit un 403. Aucun body attendu. La version demandée doit appartenir au document indiqué, sinon 403.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' },
+            { name: 'versionId', in: 'path', required: true, schema: { type: 'integer' }, description: "ID de la version (colonne id de document_versions, PAS le version_number)" }
+          ],
+          responses: {
+            200: {
+              description: 'Version récupérée',
+              content: {
+                'application/json': {
+                  example: {
+                    message: 'Version récupérée avec succès.',
+                    version: {
+                      id: 4, document_id: 9, version_number: 2,
+                      file_name: 'rapport_s1_v2.pdf',
+                      file_url: 'https://cloudinary.com/...',
+                      public_id: 'documents/abc123',
+                      resource_type: 'raw',
+                      uploaded_by: 12,
+                      created_at: '2026-06-03T14:00:00.000Z'
+                    }
+                  }
+                }
+              }
+            },
+            403: { description: "Accès refusé : document d'un autre stagiaire, encadrant non assigné à ce stagiaire, rôle non autorisé, ou la version n'appartient pas à ce document" },
+            404: { description: 'Document ou version introuvable' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
       // DOCUMENTS — ENCADRANT (review)
       // ══════════════════════════════════════════════
       '/documents/{id}/review': {
         post: {
           tags: ['Documents'],
           summary: 'Évaluer une version de document',
-          description: "Protégé par protect + restrictTo('SUPERVISOR'). Le document doit être dans la liste des documents en attente de l'encadrant connecté (stagiaires qui lui sont assignés).",
+          description: "Protégé par protect + restrictTo('SUPERVISOR'). Le document doit appartenir à un stagiaire assigné à l'encadrant connecté. Le statut du document est mis à jour avec le statut de la review.",
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
@@ -2139,7 +2324,7 @@ const options = {
               }
             },
             400: { description: "version_id ou status manquant, statut invalide, ou la version n'appartient pas à ce document" },
-            403: { description: "Accès réservé aux superviseurs, ou ce document ne fait pas partie des documents en attente de l'encadrant connecté" },
+            403: { description: "Accès réservé aux superviseurs, ou ce document n'appartient pas à un stagiaire assigné à l'encadrant connecté" },
             404: { description: 'Document introuvable' }
           }
         }

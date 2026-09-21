@@ -1,8 +1,10 @@
 import Document from "../models/documentmodel.js";
 import DocumentVersion from "../models/documentversionmodel.js";
 import Taches from "../models/tachesmodel.js";
+import { extractTextFromFile } from "../utils/textExtractor.js";
 import DocumentReview from "../models/documentreviewmodel.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
+import cloudinary from "../utils/cloudinary.js";
 import fs from "fs/promises";
 // =====================================================
 // CREATE DOCUMENT
@@ -214,21 +216,26 @@ export const addDocumentVersion = async (req, res) => {
     : 1;
 
   // Upload vers Cloudinary
+  const fileContent = await extractTextFromFile(
+  req.file.path,
+  req.file.mimetype
+);
   const cloudinaryResult = await uploadToCloudinary(
     req.file.path,
     "documents"
   );
 
   // Enregistrer la version dans PostgreSQL
-  const version = await DocumentVersion.create({
-    document_id: id,
-    version_number: nextVersion,
-    file_name: req.file.originalname,
-    file_url: cloudinaryResult.secure_url,
-    public_id: cloudinaryResult.public_id,
-    uploaded_by: req.user.id
-  });
-
+const version = await DocumentVersion.create({
+  document_id: id,
+  version_number: nextVersion,
+  file_name: req.file.originalname,
+  file_url: cloudinaryResult.secure_url,
+  public_id: cloudinaryResult.public_id,
+  resource_type: cloudinaryResult.resource_type,
+  file_content: fileContent,
+  uploaded_by: req.user.id
+});
   // Supprimer le fichier temporaire
   await fs.unlink(req.file.path);
 
@@ -296,9 +303,11 @@ export const reviewDocument = async (req, res) => {
   }
 
   const versions = await DocumentVersion.findByDocument(id);
+console.log("versions: ",versions);
 
   const versionExists = versions.some(
-    (version) => version.id === Number(version_id)
+    (version) => version.version_number === Number(version_id)
+  
   );
 
   if (!versionExists) {
@@ -309,22 +318,19 @@ export const reviewDocument = async (req, res) => {
     throw error;
   }
 
-  const supervisorDocuments =
-    await Document.findPendingBySupervisor(
-      req.supervisorInfo.id
-    );
-
-  const isHisDocument = supervisorDocuments.some(
-    (doc) => doc.id === Number(id)
+const supervisorDocument =
+  await Document.findBySupervisor(
+    req.supervisorInfo.id,
+    id
   );
-console.log("supervisorDocuments: ",supervisorDocuments);
-  if (!isHisDocument) {
-    const error = new Error(
-      "Vous n'avez pas accès à ce document."
-    );
-    error.statusCode = 403;
-    throw error;
-  }
+
+if (!supervisorDocument) {
+  const error = new Error(
+    "Vous n'avez pas accès à ce document."
+  );
+  error.statusCode = 403;
+  throw error;
+}
 
   const review = await DocumentReview.create({
     document_id: id,
@@ -372,5 +378,196 @@ console.log("req.internInfo.id: ",req.internInfo.id);
   res.status(200).json({
     message: "Reviews récupérées avec succès.",
     reviews
+  });
+};
+export const updateDocument = async (req, res) => {
+  if (!req.internInfo) {
+    const error = new Error("Accès réservé aux stagiaires.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const { id } = req.params;
+  const { title, description, document_type, task_id } = req.body;
+
+  const document = await Document.findById(id);
+
+  if (!document) {
+    const error = new Error("Document introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (document.intern_id !== req.internInfo.id) {
+    const error = new Error(
+      "Vous n'avez pas accès à ce document."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (!title && !description && !document_type && !task_id) {
+    const error = new Error(
+      "Au moins un champ doit être fourni."
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const updatedDocument = await Document.update(id, {
+    title,
+    description,
+    document_type,
+    task_id
+  });
+
+  res.status(200).json({
+    message: "Document modifié avec succès.",
+    document: updatedDocument
+  });
+};
+export const deleteDocument = async (req, res) => {
+  if (!req.internInfo) {
+    const error = new Error("Accès réservé aux stagiaires.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const { id } = req.params;
+
+  const document = await Document.findById(id);
+
+  if (!document) {
+    const error = new Error("Document introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (document.intern_id !== req.internInfo.id) {
+    const error = new Error(
+      "Vous n'avez pas accès à ce document."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const versions = await DocumentVersion.findByDocument(id);
+
+  for (const version of versions) {
+    if (version.public_id) {
+      await cloudinary.uploader.destroy(
+        version.public_id,
+        {
+          resource_type: version.resource_type
+        }
+      );
+    }
+  }
+
+  await Document.delete(id);
+
+  res.status(200).json({
+    message: "Document supprimé avec succès."
+  });
+};
+export const getDocumentVersion = async (req, res) => {
+  const { id, versionId } = req.params;
+
+  const document = await Document.findById(id);
+
+  if (!document) {
+    const error = new Error("Document introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // CAS 1 : stagiaire
+  if (req.internInfo) {
+    if (document.intern_id !== req.internInfo.id) {
+      const error = new Error(
+        "Vous n'avez pas accès à ce document."
+      );
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  // CAS 2 : superviseur
+  else if (req.supervisorInfo) {
+  const supervisorDocument =
+    await Document.findBySupervisor(
+      req.supervisorInfo.id,
+      id
+    );
+
+  if (!supervisorDocument) {
+    const error = new Error(
+      "Vous n'avez pas accès à ce document."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+}
+
+  else {
+    const error = new Error("Accès refusé.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const version = await DocumentVersion.findById(versionId);
+
+  if (!version) {
+    const error = new Error("Version introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (version.document_id !== Number(id)) {
+    const error = new Error(
+      "Cette version n'appartient pas à ce document."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  res.status(200).json({
+    message: "Version récupérée avec succès.",
+    version
+  });
+};
+export const searchDocuments = async (req, res) => {
+  const { q } = req.query;
+
+  if (!q || !q.trim()) {
+    const error = new Error("Le terme de recherche est obligatoire.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const search = q.trim();
+
+  let documents;
+
+  if (req.internInfo) {
+    documents = await Document.searchByIntern(
+      req.internInfo.id,
+      search
+    );
+  } else if (req.supervisorInfo) {
+    documents = await Document.searchBySupervisor(
+      req.supervisorInfo.id,
+      search
+    );
+  } else {
+    const error = new Error("Accès refusé.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  res.status(200).json({
+    message: "Recherche effectuée avec succès.",
+    search,
+    documents
   });
 };
