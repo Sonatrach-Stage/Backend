@@ -320,6 +320,50 @@ const options = {
             status: { type: 'string', enum: ['APPROVED', 'REVISION_REQUIRED', 'REJECTED'], example: 'APPROVED' },
             comment: { type: 'string', example: 'Bon travail, quelques fautes à corriger page 2.' }
           }
+        },
+
+        // ── Appointments (Rendez-vous) ─────────────────
+        CreateAppointment: {
+          type: 'object',
+          required: ['title', 'appointment_date', 'start_time', 'end_time', 'meeting_type'],
+          description:
+            "Créable par un STAGIAIRE ou un ENCADRANT (protect uniquement, pas de restrictTo). " +
+            "Si le créateur est un STAGIAIRE : le rendez-vous est automatiquement proposé à SON encadrant assigné (supervisor_id du stagiaire) — le stagiaire doit déjà avoir un encadrant, sinon 400. Le champ intern_name est ignoré dans ce cas. " +
+            "Si le créateur est un ENCADRANT : le champ intern_name devient OBLIGATOIRE afin de désigner le stagiaire concerné ; ce stagiaire doit lui être assigné, sinon 403 (ou 404 si le nom ne correspond à aucun stagiaire). " +
+            "end_time doit être strictement supérieur à start_time (comparaison de chaînes, ex: '10:00' > '09:00'), sinon 400. " +
+            "location est obligatoire si meeting_type = PRESENTIEL (sinon 400) ; meeting_link est obligatoire si meeting_type = VISIO (sinon 400). Le champ non pertinent (location pour un VISIO, meeting_link pour un PRESENTIEL) est ignoré et forcé à null côté serveur.",
+          properties: {
+            title: { type: 'string', example: 'Point hebdomadaire de suivi' },
+            description: { type: 'string', example: "Faire le point sur l'avancement du module de paiement." },
+            appointment_date: { type: 'string', format: 'date', example: '2026-06-10' },
+            start_time: { type: 'string', example: '09:00', description: "Heure de début, format HH:mm (comparée en chaîne de caractères par le serveur)." },
+            end_time: { type: 'string', example: '09:30', description: "Heure de fin, format HH:mm. Doit être strictement supérieure à start_time." },
+            meeting_type: { type: 'string', enum: ['PRESENTIEL', 'VISIO'], example: 'VISIO' },
+            location: { type: 'string', example: 'Salle de réunion R&D, 2e étage', description: "Obligatoire uniquement si meeting_type = PRESENTIEL." },
+            meeting_link: { type: 'string', example: 'https://meet.google.com/abc-defg-hij', description: "Obligatoire uniquement si meeting_type = VISIO." },
+            intern_name: { type: 'string', example: 'Katia Benali', description: "Obligatoire UNIQUEMENT si le créateur est un ENCADRANT (recherché via Intern.findByName). Ignoré si le créateur est un stagiaire." }
+          }
+        },
+        RespondToAppointment: {
+          type: 'object',
+          required: ['action'],
+          description:
+            "Le rendez-vous doit être au statut PENDING, sinon 400. Seul le destinataire de la demande peut répondre : " +
+            "si le rendez-vous a été créé par un STAGIAIRE, seul l'ENCADRANT concerné (supervisor_id) peut répondre ; " +
+            "si créé par un ENCADRANT, seul le STAGIAIRE concerné (intern_id) peut répondre. Sinon 403.",
+          properties: {
+            action: { type: 'string', enum: ['ACCEPT', 'REJECT'], example: 'ACCEPT' },
+            reason: { type: 'string', example: 'Indisponible à cet horaire, pouvons-nous décaler à 14h ?', description: "Motif de refus. Pris en compte uniquement si action = REJECT ; ignoré si action = ACCEPT." }
+          }
+        },
+        CancelAppointment: {
+          type: 'object',
+          description:
+            "Aucun champ obligatoire. Accessible au stagiaire ET à l'encadrant participant au rendez-vous (peu importe qui l'a créé). " +
+            "Impossible d'annuler un rendez-vous déjà CANCELLED ou COMPLETED (400).",
+          properties: {
+            reason: { type: 'string', example: "Conflit d'agenda de dernière minute.", description: "Motif d'annulation, optionnel." }
+          }
         }
       }
     },
@@ -333,6 +377,7 @@ const options = {
       { name: 'Chat' },
       { name: 'Profil' },
       { name: 'Documents' },
+      { name: 'Appointments' },
     ],
     paths: {
 
@@ -2357,76 +2402,240 @@ const options = {
           }
         }
       },
-              UpdateDocument: {
-          type: 'object',
-          description: "Toutes les propriétés sont optionnelles, mais AU MOINS UNE doit être fournie (sinon 400). Les champs non fournis conservent leur valeur actuelle (COALESCE côté SQL).",
-          properties: {
-            title: { type: 'string', example: 'Rapport de stage - Semaine 1 (corrigé)' },
-            description: { type: 'string', example: 'Version corrigée après retour de l\'encadrant.' },
-            document_type: { type: 'string', example: 'rapport_hebdomadaire' },
-            task_id: {
-              type: 'integer',
-              example: 4,
-              description: "Attention : ici c'est bien l'ID numérique de la tâche (contrairement à la création qui attend task_title)."
-            }
-          }
-        },
-              '/documents/search': {
-        get: {
-          tags: ['Documents'],
-          summary: 'Recherche intelligente dans les documents',
+
+      // ══════════════════════════════════════════════
+      // APPOINTMENTS — RENDEZ-VOUS STAGIAIRE <-> ENCADRANT
+      // Toutes les routes nécessitent : protect
+      // Aucun restrictTo : le rôle (INTERN / SUPERVISOR) est
+      // détecté via req.internInfo / req.supervisorInfo.
+      // ══════════════════════════════════════════════
+      '/appointments': {
+        post: {
+          tags: ['Appointments'],
+          summary: 'Créer un rendez-vous',
           description:
-            "Protégé par protect uniquement (pas de restrictTo) : le comportement dépend du rôle détecté. " +
-            "Si l'utilisateur est un STAGIAIRE, la recherche est limitée à ses propres documents. " +
-            "Si l'utilisateur est un ENCADRANT, la recherche porte sur les documents des stagiaires qui lui sont assignés. " +
-            "Tout autre rôle reçoit un 403. " +
-            "La recherche est effectuée sur le titre, la description, le nom du fichier et le CONTENU TEXTE des versions (extrait à l'upload), " +
-            "avec correspondance exacte (ILIKE) et correspondance approximative (similarity / pg_trgm, seuil 0.3) activée uniquement si le terme fait au moins 4 caractères. " +
-            "Les résultats sont triés par relevance_score décroissant puis par updated_at.",
+            "Protégé par protect uniquement. Peut être créé par un STAGIAIRE ou un ENCADRANT — voir le schéma CreateAppointment pour le détail des règles conditionnelles sur intern_name, location et meeting_link. " +
+            "Le rendez-vous est créé avec le statut PENDING (valeur par défaut en base) et created_by vaut 'INTERN' ou 'SUPERVISOR' selon le créateur.",
           security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'q',
-              in: 'query',
-              required: true,
-              schema: { type: 'string', example: 'paiement' },
-              description: "Terme de recherche. Obligatoire et non vide (les espaces seuls sont refusés → 400). Le terme est trimé avant traitement."
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateAppointment' }
+              }
             }
-          ],
+          },
           responses: {
-            200: {
-              description: 'Résultats de la recherche',
+            201: {
+              description: 'Rendez-vous créé',
               content: {
                 'application/json': {
                   example: {
-                    message: 'Recherche effectuée avec succès.',
-                    search: 'paiement',
-                    documents: [
-                      {
-                        id: 9, intern_id: 5, task_id: 4,
-                        title: 'Rapport de stage - Semaine 1',
-                        description: 'Résumé des tâches effectuées durant la première semaine.',
-                        document_type: 'rapport_hebdomadaire',
-                        status: 'PENDING',
-                        created_at: '2026-06-02T10:00:00.000Z',
-                        updated_at: '2026-06-03T14:00:00.000Z',
-                        intern_name: 'Katia Benali',
-                        version_id: 4, version_number: 2,
-                        file_name: 'rapport_s1_v2.pdf',
-                        file_url: 'https://cloudinary.com/...',
-                        relevance_score: 0.9
-                      }
+                    success: true,
+                    message: 'Rendez-vous créé avec succès.',
+                    appointment: {
+                      id: 3, intern_id: 5, supervisor_id: 3,
+                      title: 'Point hebdomadaire de suivi',
+                      description: "Faire le point sur l'avancement du module de paiement.",
+                      appointment_date: '2026-06-10', start_time: '09:00', end_time: '09:30',
+                      meeting_type: 'VISIO', location: null, meeting_link: 'https://meet.google.com/abc-defg-hij',
+                      status: 'PENDING', created_by: 'INTERN', created_at: '2026-06-05T08:00:00.000Z'
+                    }
+                  }
+                }
+              }
+            },
+            400: { description: "Champ obligatoire manquant, meeting_type invalide, end_time <= start_time, location manquant (PRESENTIEL), meeting_link manquant (VISIO), stagiaire sans encadrant assigné, ou intern_name manquant (créateur encadrant)" },
+            403: { description: "Ni stagiaire ni encadrant, ou (côté encadrant) le stagiaire visé ne lui est pas assigné" },
+            404: { description: "Stagiaire introuvable (intern_name ne correspond à aucun stagiaire)" }
+          }
+        }
+      },
+      '/appointments/intern': {
+        get: {
+          tags: ['Appointments'],
+          summary: 'Mes rendez-vous (stagiaire)',
+          description: "Protégé par protect. Accès réservé aux stagiaires (403 si req.internInfo est absent). Retourne tous les rendez-vous du stagiaire connecté, triés par date puis heure de début croissantes.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des rendez-vous du stagiaire',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    appointments: [
+                      { id: 3, intern_id: 5, supervisor_id: 3, title: 'Point hebdomadaire de suivi', appointment_date: '2026-06-10', start_time: '09:00', end_time: '09:30', meeting_type: 'VISIO', status: 'PENDING', created_by: 'INTERN' }
                     ]
                   }
                 }
               }
             },
-            400: { description: "Le terme de recherche (q) est manquant ou vide" },
-            403: { description: "Accès refusé : l'utilisateur connecté n'est ni stagiaire ni encadrant" }
+            403: { description: 'Accès réservé aux stagiaires' }
           }
         }
       },
-      
+      '/appointments/supervisor': {
+        get: {
+          tags: ['Appointments'],
+          summary: 'Mes rendez-vous (encadrant)',
+          description: "Protégé par protect. Accès réservé aux encadrants (403 si req.supervisorInfo est absent). Retourne tous les rendez-vous de l'encadrant connecté, triés par date puis heure de début croissantes.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des rendez-vous de l\'encadrant',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    appointments: [
+                      { id: 3, intern_id: 5, supervisor_id: 3, title: 'Point hebdomadaire de suivi', appointment_date: '2026-06-10', start_time: '09:00', end_time: '09:30', meeting_type: 'VISIO', status: 'PENDING', created_by: 'INTERN' }
+                    ]
+                  }
+                }
+              }
+            },
+            403: { description: 'Accès réservé aux superviseurs' }
+          }
+        }
+      },
+      '/appointments/{appointmentId}': {
+        get: {
+          tags: ['Appointments'],
+          summary: "Détails d'un rendez-vous",
+          description: "Protégé par protect. Accessible uniquement aux deux participants du rendez-vous (le stagiaire concerné ou l'encadrant concerné). Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'appointmentId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Appointment ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Rendez-vous récupéré',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    appointment: {
+                      id: 3, intern_id: 5, supervisor_id: 3, title: 'Point hebdomadaire de suivi',
+                      appointment_date: '2026-06-10', start_time: '09:00', end_time: '09:30',
+                      meeting_type: 'VISIO', meeting_link: 'https://meet.google.com/abc-defg-hij',
+                      status: 'PENDING', created_by: 'INTERN'
+                    }
+                  }
+                }
+              }
+            },
+            403: { description: "L'utilisateur connecté ne participe pas à ce rendez-vous" },
+            404: { description: 'Rendez-vous introuvable' }
+          }
+        }
+      },
+      '/appointments/{appointmentId}/respond': {
+        patch: {
+          tags: ['Appointments'],
+          summary: 'Accepter ou refuser un rendez-vous',
+          description:
+            "Protégé par protect. Le rendez-vous doit être au statut PENDING (sinon 400). " +
+            "Seul le DESTINATAIRE de la demande peut répondre (voir CancelAppointment / RespondToAppointment description) : " +
+            "si créé par un stagiaire → seul son encadrant peut répondre ; si créé par un encadrant → seul le stagiaire visé peut répondre. Sinon 403.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'appointmentId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Appointment ID' }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RespondToAppointment' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Réponse enregistrée (exemple : acceptation)',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Rendez-vous accepté.',
+                    appointment: { id: 3, status: 'ACCEPTED', updated_at: '2026-06-05T09:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: "action invalide (doit être ACCEPT ou REJECT), ou le rendez-vous n'est plus PENDING" },
+            403: { description: "L'utilisateur connecté n'est pas le destinataire de cette demande" },
+            404: { description: 'Rendez-vous introuvable' }
+          }
+        }
+      },
+      '/appointments/{appointmentId}/cancel': {
+        patch: {
+          tags: ['Appointments'],
+          summary: 'Annuler un rendez-vous',
+          description:
+            "Protégé par protect. Accessible aux deux participants (stagiaire et encadrant du rendez-vous), quel que soit le créateur. " +
+            "Impossible d'annuler un rendez-vous déjà CANCELLED ou COMPLETED (400). Le body est optionnel (reason).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'appointmentId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Appointment ID' }
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CancelAppointment' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Rendez-vous annulé',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Rendez-vous annulé.',
+                    appointment: { id: 3, status: 'CANCELLED', cancellation_reason: "Conflit d'agenda de dernière minute.", updated_at: '2026-06-05T10:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: 'Le rendez-vous est déjà CANCELLED ou COMPLETED' },
+            403: { description: "L'utilisateur connecté ne participe pas à ce rendez-vous" },
+            404: { description: 'Rendez-vous introuvable' }
+          }
+        }
+      },
+      '/appointments/{appointmentId}/complete': {
+        patch: {
+          tags: ['Appointments'],
+          summary: 'Marquer un rendez-vous comme terminé',
+          description:
+            "Protégé par protect. Accessible aux deux participants (stagiaire et encadrant). Le rendez-vous doit être au statut ACCEPTED, sinon 400. Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'appointmentId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Appointment ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Rendez-vous marqué comme terminé',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Rendez-vous marqué comme terminé.',
+                    appointment: { id: 3, status: 'COMPLETED', updated_at: '2026-06-10T10:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            400: { description: "Seul un rendez-vous ACCEPTED peut être marqué comme terminé" },
+            403: { description: "L'utilisateur connecté ne participe pas à ce rendez-vous" },
+            404: { description: 'Rendez-vous introuvable' }
+          }
+        }
+      }
     }
   },
   apis: [],

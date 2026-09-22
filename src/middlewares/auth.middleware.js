@@ -85,6 +85,12 @@ console.log("✅ lisalisa:",user.id);
     req.internInfo = internInfo || null;
 console.log("✅ req.internInfo",req.internInfo);
 console.log("========== BEFORE NEXT ==========");
+console.log("REQ.USER =", req.user);
+console.log("REQ.INTERNINFO =", req.internInfo);
+console.log("REQ.SUPERVISORINFO =", req.supervisorInfo);
+console.log("REQ.ADMININFO =", req.adminInfo);
+
+
     // 8. Passer au middleware suivant
     next();
 
