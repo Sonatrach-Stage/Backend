@@ -1,6 +1,8 @@
 import User from "../models/usermodel.js";
 import Intern from "../models/internmodel.js";
 import Supervisor from "../models/supervisormodel.js";
+import { createNotification } from "../utils/notification.js";
+import { emitNotification } from "../utils/notificationSocket.js";
 
 // =====================================================
 // GET COMPANY PENDING INTERNS
@@ -34,7 +36,6 @@ export const getCompanyPendingInterns = async (req, res) => {
 
 export const approveIntern = async (req, res) => {
   const { internId } = req.params;
-
   const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
@@ -58,7 +59,7 @@ export const approveIntern = async (req, res) => {
     throw error;
   }
 
-  if (intern.company_id !== companyId) {
+  if (Number(intern.company_id) !== Number(companyId)) {
     const error = new Error(
       "Vous n'êtes pas autorisé à gérer ce stagiaire."
     );
@@ -88,9 +89,7 @@ export const approveIntern = async (req, res) => {
   // Mettre à jour le statut du stagiaire
   // -----------------------------------------
 
-await Intern.update(
-  intern.user_id,
-  {
+  await Intern.update(intern.user_id, {
     studies_level: intern.studies_level,
     establishment: intern.establishment,
     start_date: intern.start_date,
@@ -98,9 +97,22 @@ await Intern.update(
     convention_url: intern.convention_url,
     convention_public_id: intern.convention_public_id,
     con_status: "APPROVED",
-    status:"waiting"
-  }
-);
+    status: "waiting",
+  });
+
+  // -----------------------------------------
+  // Notification au stagiaire
+  // -----------------------------------------
+
+  const notification = await createNotification({
+    user_id: intern.user_id,
+    title: "Inscription approuvée",
+    message:
+      "Votre inscription en tant que stagiaire a été approuvée. Vous devez maintenant attendre l'attribution d'un encadrant.",
+    type: "INTERN",
+  });
+
+  emitNotification(intern.user_id, notification);
 
   return res.status(200).json({
     success: true,
@@ -116,7 +128,6 @@ await Intern.update(
 
 export const rejectIntern = async (req, res) => {
   const { internId } = req.params;
-
   const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
@@ -143,7 +154,7 @@ export const rejectIntern = async (req, res) => {
   // Vérifier l'entreprise
   // -----------------------------------------
 
-  if (intern.company_id !== companyId) {
+  if (Number(intern.company_id) !== Number(companyId)) {
     const error = new Error(
       "Vous n'êtes pas autorisé à gérer ce stagiaire."
     );
@@ -161,9 +172,7 @@ export const rejectIntern = async (req, res) => {
   // Mettre à jour le statut
   // -----------------------------------------
 
-await Intern.update(
-  intern.user_id,
-  {
+  await Intern.update(intern.user_id, {
     studies_level: intern.studies_level,
     establishment: intern.establishment,
     start_date: intern.start_date,
@@ -171,9 +180,22 @@ await Intern.update(
     convention_url: intern.convention_url,
     convention_public_id: intern.convention_public_id,
     con_status: "rejected",
-    status:"waiting"
-  }
-);
+    status: "waiting",
+  });
+
+  // -----------------------------------------
+  // Notification au stagiaire
+  // -----------------------------------------
+
+  const notification = await createNotification({
+    user_id: intern.user_id,
+    title: "Inscription refusée",
+    message:
+      "Votre inscription en tant que stagiaire a été refusée.",
+    type: "INTERN",
+  });
+
+  emitNotification(intern.user_id, notification);
 
   return res.status(200).json({
     success: true,
@@ -185,15 +207,17 @@ await Intern.update(
 // ASSIGN SUPERVISOR
 // Affecter un encadrant à un stagiaire
 // =====================================================
+
 export const assignSupervisor = async (req, res) => {
   const { internId } = req.params;
-  const  supervisorName  = req.body.supervisorName;
-  console.log("liliana:",supervisorName);
-  
+  const supervisorName = req.body.supervisorName;
   const companyId = req.adminInfo?.company_id;
-console.log("liliana:",req.adminInfo);
-console.log("liliana:",req.supervisorInfo);
-console.log("liliana:",req.internInfo);
+
+  console.log("supervisorName:", supervisorName);
+  console.log("adminInfo:", req.adminInfo);
+  console.log("supervisorInfo:", req.supervisorInfo);
+  console.log("internInfo:", req.internInfo);
+
   // =========================================
   // 1. Vérifications des données reçues
   // =========================================
@@ -213,7 +237,9 @@ console.log("liliana:",req.internInfo);
   }
 
   if (!supervisorName || !supervisorName.trim()) {
-    const error = new Error("Le nom de l'encadrant est obligatoire.");
+    const error = new Error(
+      "Le nom de l'encadrant est obligatoire."
+    );
     error.statusCode = 400;
     throw error;
   }
@@ -261,11 +287,10 @@ console.log("liliana:",req.internInfo);
   //    entreprise
   // =========================================
 
-  const supervisor =
-    await Supervisor.findByNameAndCompany(
-      supervisorName.trim(),
-      companyId
-    );
+  const supervisor = await Supervisor.findByNameAndCompany(
+    supervisorName.trim(),
+    companyId
+  );
 
   if (!supervisor) {
     const error = new Error(
@@ -297,10 +322,13 @@ console.log("liliana:",req.internInfo);
   const updatedRows = await Intern.assignSupervisor(
     supervisor.id,
     intern.id
-  );const updateStatus = await Intern.updateStatus(
-  intern.user_id,
-"supervisor_assigned"
-);
+  );
+
+  await Intern.updateStatus(
+    intern.user_id,
+    "supervisor_assigned"
+  );
+
   // =========================================
   // 8. Vérifier que l'affectation a réellement
   //    été effectuée
@@ -315,7 +343,40 @@ console.log("liliana:",req.internInfo);
   }
 
   // =========================================
-  // 9. Réponse
+  // 9. Notification au stagiaire
+  // =========================================
+
+  const internNotification = await createNotification({
+    user_id: intern.user_id,
+    title: "Encadrant affecté",
+    message: `Votre encadrant est maintenant ${supervisorName.trim()}.`,
+    type: "SUPERVISION",
+  });
+
+  emitNotification(
+    intern.user_id,
+    internNotification
+  );
+
+  // =========================================
+  // 10. Notification à l'encadrant
+  // =========================================
+
+  const supervisorNotification = await createNotification({
+    user_id: supervisor.user_id,
+    title: "Nouveau stagiaire",
+    message:
+      "Un nouveau stagiaire vous a été affecté.",
+    type: "SUPERVISION",
+  });
+
+  emitNotification(
+    supervisor.user_id,
+    supervisorNotification
+  );
+
+  // =========================================
+  // 11. Réponse
   // =========================================
 
   return res.status(200).json({
@@ -323,12 +384,11 @@ console.log("liliana:",req.internInfo);
     message: "Encadrant affecté avec succès.",
     data: {
       internId: intern.id,
-      supervisorId: supervisor.id
-    }
+      supervisorId: supervisor.id,
+    },
   });
-}
+};
 
-;
 // =====================================================
 // ACTIVATE INTERN
 // Activer manuellement un compte stagiaire
@@ -336,7 +396,6 @@ console.log("liliana:",req.internInfo);
 
 export const activateIntern = async (req, res) => {
   const { internId } = req.params;
-
   const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
@@ -355,7 +414,7 @@ export const activateIntern = async (req, res) => {
     throw error;
   }
 
-  if (intern.company_id !== companyId) {
+  if (Number(intern.company_id) !== Number(companyId)) {
     const error = new Error(
       "Vous n'êtes pas autorisé à gérer ce stagiaire."
     );
@@ -364,6 +423,19 @@ export const activateIntern = async (req, res) => {
   }
 
   await User.activate(intern.user_id);
+
+  // -----------------------------------------
+  // Notification
+  // -----------------------------------------
+
+  const notification = await createNotification({
+    user_id: intern.user_id,
+    title: "Compte activé",
+    message: "Votre compte stagiaire a été activé.",
+    type: "INTERN",
+  });
+
+  emitNotification(intern.user_id, notification);
 
   return res.status(200).json({
     success: true,
@@ -378,7 +450,6 @@ export const activateIntern = async (req, res) => {
 
 export const deactivateIntern = async (req, res) => {
   const { internId } = req.params;
-
   const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
@@ -397,7 +468,7 @@ export const deactivateIntern = async (req, res) => {
     throw error;
   }
 
-  if (intern.company_id !== companyId) {
+  if (Number(intern.company_id) !== Number(companyId)) {
     const error = new Error(
       "Vous n'êtes pas autorisé à gérer ce stagiaire."
     );
@@ -406,6 +477,19 @@ export const deactivateIntern = async (req, res) => {
   }
 
   await User.deactivate(intern.user_id);
+
+  // -----------------------------------------
+  // Notification
+  // -----------------------------------------
+
+  const notification = await createNotification({
+    user_id: intern.user_id,
+    title: "Compte désactivé",
+    message: "Votre compte stagiaire a été désactivé.",
+    type: "INTERN",
+  });
+
+  emitNotification(intern.user_id, notification);
 
   return res.status(200).json({
     success: true,
@@ -464,11 +548,18 @@ export const getCompanyInterns = async (req, res) => {
   });
 };
 
+// =====================================================
+// ACTIVATE SUPERVISOR
+// Activer un compte encadrant
+// =====================================================
+
 export const activateSupervisor = async (req, res) => {
   const { superId } = req.params;
-
   const companyId = req.adminInfo?.company_id;
-console.log("companyId*: ",companyId);
+
+  console.log("companyId:", companyId);
+  console.log("superId:", superId);
+
   if (!companyId) {
     const error = new Error(
       "Impossible de déterminer votre entreprise."
@@ -478,22 +569,26 @@ console.log("companyId*: ",companyId);
   }
 
   // -----------------------------------------
-  // Vérifier que le stagiaire existe
-  // et appartient à cette entreprise
+  // Vérifier que l'encadrant existe
   // -----------------------------------------
 
   const supervisor = await Supervisor.findById(superId);
 
-console.log("superId*: ",superId);
   if (!supervisor) {
     const error = new Error("Encadrant introuvable.");
     error.statusCode = 404;
     throw error;
   }
 
-  if (supervisor.company_id !== companyId) {
+  // -----------------------------------------
+  // Vérifier l'entreprise
+  // -----------------------------------------
+
+  if (
+    Number(supervisor.company_id) !== Number(companyId)
+  ) {
     const error = new Error(
-      "Vous n'êtes pas autorisé à gérer ce stagiaire."
+      "Vous n'êtes pas autorisé à gérer cet encadrant."
     );
     error.statusCode = 403;
     throw error;
@@ -501,16 +596,36 @@ console.log("superId*: ",superId);
 
   await User.activate(supervisor.user_id);
 
+  // -----------------------------------------
+  // Notification
+  // -----------------------------------------
+
+  const notification = await createNotification({
+    user_id: supervisor.user_id,
+    title: "Compte activé",
+    message:
+      "Votre compte encadrant a été activé par l'administrateur.",
+    type: "SUPERVISION",
+  });
+
+  emitNotification(
+    supervisor.user_id,
+    notification
+  );
 
   return res.status(200).json({
     success: true,
-    message:
-      "Encadrant activé.",
+    message: "Encadrant activé.",
   });
 };
+
+// =====================================================
+// DEACTIVATE SUPERVISOR
+// Désactiver un compte encadrant
+// =====================================================
+
 export const deactivateSupervisor = async (req, res) => {
   const { superId } = req.params;
-
   const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
@@ -529,9 +644,11 @@ export const deactivateSupervisor = async (req, res) => {
     throw error;
   }
 
-  if (supervisor.company_id !== companyId) {
+  if (
+    Number(supervisor.company_id) !== Number(companyId)
+  ) {
     const error = new Error(
-      "Vous n'êtes pas autorisé à gérer ce stagiaire."
+      "Vous n'êtes pas autorisé à gérer cet encadrant."
     );
     error.statusCode = 403;
     throw error;
@@ -539,13 +656,37 @@ export const deactivateSupervisor = async (req, res) => {
 
   await User.deactivate(supervisor.user_id);
 
+  // -----------------------------------------
+  // Notification
+  // -----------------------------------------
+
+  const notification = await createNotification({
+    user_id: supervisor.user_id,
+    title: "Compte désactivé",
+    message:
+      "Votre compte encadrant a été désactivé par l'administrateur.",
+    type: "SUPERVISION",
+  });
+
+  emitNotification(
+    supervisor.user_id,
+    notification
+  );
+
   return res.status(200).json({
     success: true,
-    message: "Compte de l'encadrant désactivé avec succès.",
+    message:
+      "Compte de l'encadrant désactivé avec succès.",
   });
 };
-export const getActiveInterns = async(req,res)=>{
-    const companyId = req.adminInfo?.company_id;
+
+// =====================================================
+// GET ACTIVE INTERNS
+// Récupérer les stagiaires actifs
+// =====================================================
+
+export const getActiveInterns = async (req, res) => {
+  const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
     const error = new Error(
@@ -555,17 +696,23 @@ export const getActiveInterns = async(req,res)=>{
     throw error;
   }
 
-  const actinterns = await Intern.getActiveByCompany(companyId);
+  const interns =
+    await Intern.getActiveByCompany(companyId);
 
   return res.status(200).json({
     success: true,
-    count: actinterns.length,
-    actinterns,
+    count: interns.length,
+    interns,
   });
 };
 
-export const getDesactiveInterns = async(req,res)=>{
-    const companyId = req.adminInfo?.company_id;
+// =====================================================
+// GET DESACTIVE INTERNS
+// Récupérer les stagiaires désactivés
+// =====================================================
+
+export const getDesactiveInterns = async (req, res) => {
+  const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
     const error = new Error(
@@ -575,17 +722,23 @@ export const getDesactiveInterns = async(req,res)=>{
     throw error;
   }
 
-  const desinterns = await Intern.getDesactiveByCompany(companyId);
+  const interns =
+    await Intern.getDesactiveByCompany(companyId);
 
   return res.status(200).json({
     success: true,
-    count: desinterns.length,
-    desinterns,
+    count: interns.length,
+    interns,
   });
 };
 
-export const getActiveSupervisor = async(req,res)=>{
-    const companyId = req.adminInfo?.company_id;
+// =====================================================
+// GET ACTIVE SUPERVISORS
+// Récupérer les encadrants actifs
+// =====================================================
+
+export const getActiveSupervisor = async (req, res) => {
+  const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
     const error = new Error(
@@ -595,17 +748,23 @@ export const getActiveSupervisor = async(req,res)=>{
     throw error;
   }
 
-  const actinterns = await Supervisor.getActiveByCompany(companyId);
+  const supervisors =
+    await Supervisor.getActiveByCompany(companyId);
 
   return res.status(200).json({
     success: true,
-    count: actinterns.length,
-    actinterns,
+    count: supervisors.length,
+    supervisors,
   });
 };
 
-export const getDesactiveSupervisor = async(req,res)=>{
-    const companyId = req.adminInfo?.company_id;
+// =====================================================
+// GET DESACTIVE SUPERVISORS
+// Récupérer les encadrants désactivés
+// =====================================================
+
+export const getDesactiveSupervisor = async (req, res) => {
+  const companyId = req.adminInfo?.company_id;
 
   if (!companyId) {
     const error = new Error(
@@ -615,11 +774,12 @@ export const getDesactiveSupervisor = async(req,res)=>{
     throw error;
   }
 
-  const desinterns = await Supervisor.getDesactiveByCompany(companyId);
+  const supervisors =
+    await Supervisor.getDesactiveByCompany(companyId);
 
   return res.status(200).json({
     success: true,
-    count: desinterns.length,
-    desinterns,
+    count: supervisors.length,
+    supervisors,
   });
 };

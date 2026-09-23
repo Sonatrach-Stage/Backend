@@ -2,6 +2,8 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import pool from "../config/db.js";
 import Message from "../models/messagemodel.js";
+import { createNotification } from "../utils/notification.js";
+import { emitNotification } from "../utils/notificationSocket.js";
 const onlineUsers = new Map();
 export const initSocket = (httpServer) => {
 
@@ -70,7 +72,7 @@ export const initSocket = (httpServer) => {
 const userId = socket.user.id;
 
 onlineUsers.set(userId, socket.id);
-
+socket.join(`user_${userId}`);
 console.log(
   `🟢 ${socket.user.name} est maintenant ONLINE`
 );
@@ -137,7 +139,7 @@ socket.broadcast.emit("user_online", {
 });
 
     // SEND MESSAGE
-    socket.on("send_message", async ({ conversation_id, content }) => {
+socket.on("send_message", async ({ conversation_id, content }) => {
 
   try {
 
@@ -148,9 +150,13 @@ socket.broadcast.emit("user_online", {
     }
 
     // Vérifier que l'utilisateur appartient à la conversation
+    // et récupérer les user_id des deux participants
     const result = await pool.query(
       `
-      SELECT c.*
+      SELECT
+        c.*,
+        s.user_id AS supervisor_user_id,
+        i.user_id AS intern_user_id
       FROM conversations c
       JOIN supervisor s
         ON s.id = c.supervisor_id
@@ -168,14 +174,51 @@ socket.broadcast.emit("user_online", {
       });
     }
 
+    const conversation = result.rows[0];
+
+    // ==========================================
+    // Déterminer le destinataire
+    // ==========================================
+
+    const recipientUserId =
+      Number(conversation.supervisor_user_id) === Number(socket.user.id)
+        ? conversation.intern_user_id
+        : conversation.supervisor_user_id;
+
+    // ==========================================
     // Créer le message
+    // ==========================================
+
     const message = await Message.create(
       conversation_id,
       socket.user.id,
       content.trim()
     );
 
-    // Envoyer le message à tous les utilisateurs de la room
+    // ==========================================
+    // Créer la notification dans la DB
+    // ==========================================
+
+    const notification = await createNotification({
+      user_id: recipientUserId,
+      title: "Nouveau message",
+      message: `${socket.user.name} vous a envoyé un nouveau message.`,
+      type: "CHAT"
+    });
+
+    // ==========================================
+    // Envoyer la notification en temps réel
+    // ==========================================
+
+    emitNotification(
+      recipientUserId,
+      notification
+    );
+
+    // ==========================================
+    // Envoyer le message dans la conversation
+    // ==========================================
+
     io.to(`conversation_${conversation_id}`).emit(
       "new_message",
       message
@@ -188,7 +231,6 @@ socket.broadcast.emit("user_online", {
     socket.emit("message_error", {
       message: "Impossible d'envoyer le message"
     });
-
   }
 
 });

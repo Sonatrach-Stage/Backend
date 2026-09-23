@@ -12,6 +12,7 @@ import companyRoutes from "./routes/company.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
 import documentRoutes from "./routes/document.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 const app = express();
 
 app.use(cors());
@@ -28,6 +29,7 @@ app.use("/companies", companyRoutes);
 app.use("/profile", profileRoutes);
 app.use("/documents", documentRoutes);
 app.use("/appointments", appointmentRoutes);
+app.use("/notifications", notificationRoutes);
 swaggerSetup(app);
 app.get("/",(req,res)=>{
   res.json("the server of our project is running")

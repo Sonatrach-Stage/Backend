@@ -1,11 +1,15 @@
 import Appointment from "../models/appointmentmodel.js";
 import Intern from "../models/internmodel.js";
+import supervisor from "../models/supervisormodel.js";
+
+import { createNotification } from "../utils/notification.js";
+import { emitNotification } from "../utils/notificationSocket.js";
+
 // ======================================================
 // CREATE APPOINTMENT
 // ======================================================
 
 export const createAppointment = async (req, res) => {
-
   const {
     title,
     description,
@@ -17,7 +21,6 @@ export const createAppointment = async (req, res) => {
     meeting_link,
     intern_name,
   } = req.body;
-
 
   // ======================================================
   // VÉRIFICATIONS GÉNÉRALES
@@ -33,59 +36,45 @@ export const createAppointment = async (req, res) => {
     const error = new Error(
       "Les champs obligatoires sont manquants."
     );
-
     error.statusCode = 400;
     throw error;
   }
 
-
   if (!["PRESENTIEL", "VISIO"].includes(meeting_type)) {
-
     const error = new Error(
       "Le type de rendez-vous doit être PRESENTIEL ou VISIO."
     );
-
     error.statusCode = 400;
     throw error;
   }
 
-
   if (end_time <= start_time) {
-
     const error = new Error(
       "L'heure de fin doit être supérieure à l'heure de début."
     );
-
     error.statusCode = 400;
     throw error;
   }
-
 
   // ======================================================
   // VÉRIFICATION PRESENTIEL / VISIO
   // ======================================================
 
   if (meeting_type === "PRESENTIEL" && !location) {
-
     const error = new Error(
       "Le lieu est obligatoire pour un rendez-vous présentiel."
     );
-
     error.statusCode = 400;
     throw error;
   }
 
-
   if (meeting_type === "VISIO" && !meeting_link) {
-
     const error = new Error(
       "Le lien de visioconférence est obligatoire."
     );
-
     error.statusCode = 400;
     throw error;
   }
-
 
   // ======================================================
   // VARIABLES
@@ -95,77 +84,51 @@ export const createAppointment = async (req, res) => {
   let supervisorId;
   let createdBy;
 
-
   // ======================================================
   // CAS 1 : INTERN CRÉE
   // ======================================================
 
   if (req.internInfo) {
-
     internId = req.internInfo.id;
-
     supervisorId = req.internInfo.supervisor_id;
-
     createdBy = "INTERN";
 
-
     if (!supervisorId) {
-
       const error = new Error(
         "Vous n'avez pas encore de superviseur assigné."
       );
-
       error.statusCode = 400;
-
       throw error;
     }
   }
-
 
   // ======================================================
   // CAS 2 : SUPERVISOR CRÉE
   // ======================================================
 
   else if (req.supervisorInfo) {
-
     supervisorId = req.supervisorInfo.id;
-
     createdBy = "SUPERVISOR";
 
-
-    // Le superviseur doit sélectionner un stagiaire
     if (!intern_name) {
-
       const error = new Error(
         "Vous devez sélectionner un stagiaire."
       );
-
       error.statusCode = 400;
-
       throw error;
     }
 
-
-    // Chercher le stagiaire par son nom
     const intern = await Intern.findByName(intern_name);
 
     console.log("intern:", intern);
 
-
     if (!intern) {
-
       const error = new Error(
         "Stagiaire introuvable."
       );
-
       error.statusCode = 404;
-
       throw error;
     }
-
-
-    // Vérifier que le stagiaire appartient
-    // bien à ce superviseur
 
     const assignedIntern =
       await Appointment.findInternForSupervisor(
@@ -173,59 +136,41 @@ export const createAppointment = async (req, res) => {
         supervisorId
       );
 
-
     if (!assignedIntern) {
-
       const error = new Error(
         "Ce stagiaire ne vous est pas assigné."
       );
-
       error.statusCode = 403;
-
       throw error;
     }
 
-
     internId = intern.id;
   }
-
 
   // ======================================================
   // AUCUN PROFIL RECONNU
   // ======================================================
 
   else {
-
     const error = new Error(
       "Vous devez être un stagiaire ou un superviseur."
     );
-
     error.statusCode = 403;
-
     throw error;
   }
-
 
   // ======================================================
   // CRÉATION
   // ======================================================
 
   const appointment = await Appointment.create({
-
     intern_id: internId,
-
     supervisor_id: supervisorId,
-
     title,
-
     description,
-
     appointment_date,
-
     start_time,
-
     end_time,
-
     meeting_type,
 
     location:
@@ -241,16 +186,64 @@ export const createAppointment = async (req, res) => {
     created_by: createdBy,
   });
 
+  // ======================================================
+  // NOTIFICATION
+  // ======================================================
+
+  // INTERN crée
+  // → notification au SUPERVISEUR
+
+  if (createdBy === "INTERN") {
+    const supervisorData = await supervisor.findById(
+      supervisorId
+    );
+
+    if (supervisorData) {
+      const notification = await createNotification({
+        user_id: supervisorData.user_id,
+        title: "Nouveau rendez-vous",
+        message: `Votre stagiaire vous a proposé le rendez-vous "${title}".`,
+        type: "APPOINTMENT",
+      });
+
+      emitNotification(
+        supervisorData.user_id,
+        notification
+      );
+    }
+  }
+
+  // SUPERVISOR crée
+  // → notification à l'INTERN
+
+  if (createdBy === "SUPERVISOR") {
+    const internData = await Intern.findById(
+      internId
+    );
+
+    if (internData) {
+      const notification = await createNotification({
+        user_id: internData.user_id,
+        title: "Nouveau rendez-vous",
+        message: `Votre superviseur vous a proposé le rendez-vous "${title}".`,
+        type: "APPOINTMENT",
+      });
+
+      emitNotification(
+        internData.user_id,
+        notification
+      );
+    }
+  }
 
   return res.status(201).json({
-
     success: true,
-
     message: "Rendez-vous créé avec succès.",
-
     appointment,
   });
 };
+
+
 // ======================================================
 // GET INTERN APPOINTMENTS
 // ======================================================
@@ -318,11 +311,6 @@ export const getAppointmentById = async (req, res) => {
     throw error;
   }
 
-  // ---------------------------------
-  // Vérifier que l'utilisateur
-  // participe au rendez-vous
-  // ---------------------------------
-
   const isIntern =
     req.internInfo &&
     appointment.intern_id === req.internInfo.id;
@@ -355,9 +343,9 @@ export const respondToAppointment = async (req, res) => {
   const { appointmentId } = req.params;
   const { action, reason } = req.body;
 
-  // ---------------------------------
-  // Vérifier l'action
-  // ---------------------------------
+  // ======================================================
+  // VÉRIFIER L'ACTION
+  // ======================================================
 
   if (!["ACCEPT", "REJECT"].includes(action)) {
     const error = new Error(
@@ -367,9 +355,9 @@ export const respondToAppointment = async (req, res) => {
     throw error;
   }
 
-  // ---------------------------------
-  // Récupérer le rendez-vous
-  // ---------------------------------
+  // ======================================================
+  // RÉCUPÉRER LE RENDEZ-VOUS
+  // ======================================================
 
   const appointment = await Appointment.findById(
     appointmentId
@@ -383,9 +371,9 @@ export const respondToAppointment = async (req, res) => {
     throw error;
   }
 
-  // ---------------------------------
-  // Le rendez-vous doit être PENDING
-  // ---------------------------------
+  // ======================================================
+  // LE RENDEZ-VOUS DOIT ÊTRE PENDING
+  // ======================================================
 
   if (appointment.status !== "PENDING") {
     const error = new Error(
@@ -401,8 +389,9 @@ export const respondToAppointment = async (req, res) => {
 
   let canRespond = false;
 
-  // Si l'intern a créé le rendez-vous,
-  // seul le superviseur peut répondre.
+  // INTERN a créé
+  // → seul le SUPERVISEUR peut répondre
+
   if (appointment.created_by === "INTERN") {
     if (
       req.supervisorInfo &&
@@ -412,8 +401,9 @@ export const respondToAppointment = async (req, res) => {
     }
   }
 
-  // Si le superviseur a créé le rendez-vous,
-  // seul l'intern peut répondre.
+  // SUPERVISEUR a créé
+  // → seul l'INTERN peut répondre
+
   if (appointment.created_by === "SUPERVISOR") {
     if (
       req.internInfo &&
@@ -439,6 +429,54 @@ export const respondToAppointment = async (req, res) => {
     const updatedAppointment =
       await Appointment.accept(appointmentId);
 
+    // INTERN a créé
+    // → le superviseur a accepté
+    // → notification à l'INTERN
+
+    if (appointment.created_by === "INTERN") {
+      const internData = await Intern.findById(
+        appointment.intern_id
+      );
+
+      if (internData) {
+        const notification = await createNotification({
+          user_id: internData.user_id,
+          title: "Rendez-vous accepté",
+          message: `Votre rendez-vous "${appointment.title}" a été accepté.`,
+          type: "APPOINTMENT",
+        });
+
+        emitNotification(
+          internData.user_id,
+          notification
+        );
+      }
+    }
+
+    // SUPERVISOR a créé
+    // → l'intern a accepté
+    // → notification au SUPERVISEUR
+
+    if (appointment.created_by === "SUPERVISOR") {
+      const supervisorData = await supervisor.findById(
+        appointment.supervisor_id
+      );
+
+      if (supervisorData) {
+        const notification = await createNotification({
+          user_id: supervisorData.user_id,
+          title: "Rendez-vous accepté",
+          message: `Votre rendez-vous "${appointment.title}" a été accepté par le stagiaire.`,
+          type: "APPOINTMENT",
+        });
+
+        emitNotification(
+          supervisorData.user_id,
+          notification
+        );
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Rendez-vous accepté.",
@@ -457,6 +495,54 @@ export const respondToAppointment = async (req, res) => {
         reason
       );
 
+    // INTERN a créé
+    // → le superviseur a refusé
+    // → notification à l'INTERN
+
+    if (appointment.created_by === "INTERN") {
+      const internData = await Intern.findById(
+        appointment.intern_id
+      );
+
+      if (internData) {
+        const notification = await createNotification({
+          user_id: internData.user_id,
+          title: "Rendez-vous refusé",
+          message: `Votre rendez-vous "${appointment.title}" a été refusé.`,
+          type: "APPOINTMENT",
+        });
+
+        emitNotification(
+          internData.user_id,
+          notification
+        );
+      }
+    }
+
+    // SUPERVISOR a créé
+    // → l'intern a refusé
+    // → notification au SUPERVISEUR
+
+    if (appointment.created_by === "SUPERVISOR") {
+      const supervisorData = await supervisor.findById(
+        appointment.supervisor_id
+      );
+
+      if (supervisorData) {
+        const notification = await createNotification({
+          user_id: supervisorData.user_id,
+          title: "Rendez-vous refusé",
+          message: `Votre rendez-vous "${appointment.title}" a été refusé par le stagiaire.`,
+          type: "APPOINTMENT",
+        });
+
+        emitNotification(
+          supervisorData.user_id,
+          notification
+        );
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Rendez-vous refusé.",
@@ -474,6 +560,10 @@ export const cancelAppointment = async (req, res) => {
   const { appointmentId } = req.params;
   const { reason } = req.body;
 
+  // ======================================================
+  // RÉCUPÉRER LE RENDEZ-VOUS
+  // ======================================================
+
   const appointment = await Appointment.findById(
     appointmentId
   );
@@ -486,19 +576,27 @@ export const cancelAppointment = async (req, res) => {
     throw error;
   }
 
-  // ---------------------------------
-  // Vérifier participant
-  // ---------------------------------
+  // ======================================================
+  // VÉRIFIER QUE L'UTILISATEUR PARTICIPE
+  // ======================================================
 
-  const isIntern =
+  let isParticipant = false;
+
+  if (
     req.internInfo &&
-    appointment.intern_id === req.internInfo.id;
+    appointment.intern_id === req.internInfo.id
+  ) {
+    isParticipant = true;
+  }
 
-  const isSupervisor =
+  if (
     req.supervisorInfo &&
-    appointment.supervisor_id === req.supervisorInfo.id;
+    appointment.supervisor_id === req.supervisorInfo.id
+  ) {
+    isParticipant = true;
+  }
 
-  if (!isIntern && !isSupervisor) {
+  if (!isParticipant) {
     const error = new Error(
       "Vous n'êtes pas autorisé à annuler ce rendez-vous."
     );
@@ -506,10 +604,17 @@ export const cancelAppointment = async (req, res) => {
     throw error;
   }
 
-  if (
-    appointment.status === "CANCELLED" ||
-    appointment.status === "COMPLETED"
-  ) {
+  // ======================================================
+  // ANNULER LE RENDEZ-VOUS
+  // ======================================================
+
+  const updatedAppointment =
+    await Appointment.cancel(
+      appointmentId,
+      reason
+    );
+
+  if (!updatedAppointment) {
     const error = new Error(
       "Ce rendez-vous ne peut plus être annulé."
     );
@@ -517,11 +622,63 @@ export const cancelAppointment = async (req, res) => {
     throw error;
   }
 
-  const updatedAppointment =
-    await Appointment.cancel(
-      appointmentId,
-      reason
-    );
+  // ======================================================
+  // NOTIFICATION
+  // ======================================================
+
+  // INTERN annule
+  // → notification au SUPERVISEUR
+
+  if (
+    req.internInfo &&
+    appointment.intern_id === req.internInfo.id
+  ) {
+    const supervisorData =
+      await supervisor.findById(
+        appointment.supervisor_id
+      );
+
+    if (supervisorData) {
+      const notification = await createNotification({
+        user_id: supervisorData.user_id,
+        title: "Rendez-vous annulé",
+        message: `Le rendez-vous "${appointment.title}" a été annulé par votre stagiaire.`,
+        type: "APPOINTMENT",
+      });
+
+      emitNotification(
+        supervisorData.user_id,
+        notification
+      );
+    }
+  }
+
+  // SUPERVISEUR annule
+  // → notification à l'INTERN
+
+  if (
+    req.supervisorInfo &&
+    appointment.supervisor_id === req.supervisorInfo.id
+  ) {
+    const internData =
+      await Intern.findById(
+        appointment.intern_id
+      );
+
+    if (internData) {
+      const notification = await createNotification({
+        user_id: internData.user_id,
+        title: "Rendez-vous annulé",
+        message: `Le rendez-vous "${appointment.title}" a été annulé par votre superviseur.`,
+        type: "APPOINTMENT",
+      });
+
+      emitNotification(
+        internData.user_id,
+        notification
+      );
+    }
+  }
 
   return res.status(200).json({
     success: true,
@@ -538,9 +695,10 @@ export const cancelAppointment = async (req, res) => {
 export const completeAppointment = async (req, res) => {
   const { appointmentId } = req.params;
 
-  const appointment = await Appointment.findById(
-    appointmentId
-  );
+  const appointment =
+    await Appointment.findById(
+      appointmentId
+    );
 
   if (!appointment) {
     const error = new Error(
@@ -578,6 +736,58 @@ export const completeAppointment = async (req, res) => {
     await Appointment.complete(
       appointmentId
     );
+
+  // ======================================================
+  // NOTIFICATION
+  // ======================================================
+
+  // INTERN termine
+  // → notification au SUPERVISEUR
+
+  if (isIntern) {
+    const supervisorData =
+      await supervisor.findById(
+        appointment.supervisor_id
+      );
+
+    if (supervisorData) {
+      const notification = await createNotification({
+        user_id: supervisorData.user_id,
+        title: "Rendez-vous terminé",
+        message: `Le rendez-vous "${appointment.title}" a été marqué comme terminé par votre stagiaire.`,
+        type: "APPOINTMENT",
+      });
+
+      emitNotification(
+        supervisorData.user_id,
+        notification
+      );
+    }
+  }
+
+  // SUPERVISEUR termine
+  // → notification à l'INTERN
+
+  if (isSupervisor) {
+    const internData =
+      await Intern.findById(
+        appointment.intern_id
+      );
+
+    if (internData) {
+      const notification = await createNotification({
+        user_id: internData.user_id,
+        title: "Rendez-vous terminé",
+        message: `Le rendez-vous "${appointment.title}" a été marqué comme terminé par votre superviseur.`,
+        type: "APPOINTMENT",
+      });
+
+      emitNotification(
+        internData.user_id,
+        notification
+      );
+    }
+  }
 
   return res.status(200).json({
     success: true,

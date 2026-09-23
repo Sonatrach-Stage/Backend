@@ -1,7 +1,9 @@
 import Taches from "../models/tachesmodel.js";
 import Activities from "../models/activitiesmodel.js";
 import Intern from "../models/internmodel.js";
-
+import supervisor from "../models/supervisormodel.js";
+import { createNotification } from "../utils/notification.js";
+import { emitNotification } from "../utils/notificationSocket.js";
 // =====================================================
 // SUPERVISOR - GET TACHES
 // =====================================================
@@ -185,8 +187,9 @@ export const createTachebysup = async (req, res) => {
   } = req.body;
 
   const intern = await Intern.findByName(intern_name);
-console.log("intern_name",intern_name)
-  console.log("intern",intern);
+
+  console.log("intern_name", intern_name);
+  console.log("intern", intern);
 
   if (!intern) {
     const error = new Error("Stagiaire introuvable.");
@@ -207,6 +210,20 @@ console.log("intern_name",intern_name)
     status: "in progress"
   });
 
+  // ==========================================
+  // NOTIFICATION AU STAGIAIRE
+  // ==========================================
+
+  const notification = await createNotification({
+    user_id: intern.user_id,
+    title: "Nouvelle tâche",
+    message: `Votre superviseur vous a assigné une nouvelle tâche : "${title}".`,
+    type: "TASK",
+  });
+emitNotification(
+  intern.user_id,
+  notification
+);
   return res.status(201).json({
     success: true,
     tache
@@ -273,6 +290,22 @@ export const updateTachebysup = async (req, res) => {
     status: tache.status
   });
 
+  // ==========================================
+  // NOTIFICATION AU STAGIAIRE
+  // ==========================================
+
+  const internData = await Intern.findById(internID);
+
+const notification = await createNotification({
+    user_id: internData.user_id,
+    title: "Tâche modifiée",
+    message: `Votre superviseur a modifié la tâche "${tache.title}".`,
+    type: "TASK",
+  });
+ emitNotification(
+    internData.user_id,
+    notification
+  );
   return res.status(200).json({
     success: true,
     message: "La tâche est modifiée avec succès !"
@@ -283,7 +316,6 @@ export const updateTachebysup = async (req, res) => {
 // =====================================================
 // SUPERVISOR - DELETE TACHE
 // =====================================================
-
 export const deleteTachebysup = async (req, res) => {
 
   const { tacheId } = req.params;
@@ -307,22 +339,41 @@ export const deleteTachebysup = async (req, res) => {
     error.statusCode = 403;
     throw error;
   }
-const tache=await Taches.findById(tacheId);
-if(!tache){
+
+  const tache = await Taches.findById(tacheId);
+
+  if (!tache) {
     const error = new Error(
-      "La tache n'existe meme pas!" 
+      "La tache n'existe meme pas!"
     );
     error.statusCode = 403;
     throw error;
   }
+
+  // Récupérer le stagiaire AVANT de supprimer la tâche
+  const internData = await Intern.findById(tache.intern_id);
+
   await Taches.delete(tacheId);
 
+  // ==========================================
+  // NOTIFICATION AU STAGIAIRE
+  // ==========================================
+
+  const notification = await createNotification({
+    user_id: internData.user_id,
+    title: "Tâche supprimée",
+    message: `Votre superviseur a supprimé la tâche "${tache.title}".`,
+    type: "TASK",
+  });
+ emitNotification(
+    internData.user_id,
+    notification
+  );
   return res.status(200).json({
     success: true,
     message: "La tâche est supprimée avec succès !"
   });
 };
-
 
 // =====================================================
 // INTERN - CREATE TACHE
@@ -386,17 +437,33 @@ export const createTachebyIntern = async (req, res) => {
     end_date: end_date,
     status: "in progress"
   });
+/*const supervisorData = await supervisor.findById(
+  supervisorId
+);
 
+if (supervisorData) {
+
+  const notification = await createNotification({
+    user_id: supervisorData.user_id,
+    title: "Nouvelle tâche",
+    message: `Votre stagiaire a créé une nouvelle tâche : "${title}".`,
+    type: "TASK",
+  });
+
+  emitNotification(
+    supervisorData.user_id,
+    notification
+  );
+}*/
   return res.status(201).json({
     success: true,
     tache
   });
 };
-
-
 // =====================================================
 // INTERN - UPDATE TACHE
 // =====================================================
+
 
 export const updateTachebyIntern = async (req, res) => {
 
@@ -448,17 +515,37 @@ export const updateTachebyIntern = async (req, res) => {
     status: tache.status
   });
 
+  // ==========================================
+  // NOTIFICATION AU SUPERVISEUR
+  // ==========================================
+
+/*  const supervisorData = await supervisor.findById(
+  tache.supervisor_id
+);
+
+if (supervisorData) {
+
+  const notification = await createNotification({
+    user_id: supervisorData.user_id,
+    title: "Tâche modifiée",
+    message: `Votre stagiaire a modifié la tâche "${tache.title}".`,
+    type: "TASK",
+  });
+
+  emitNotification(
+    supervisorData.user_id,
+    notification
+  );
+}*/
   return res.status(200).json({
     success: true,
     message: "La tâche est modifiée avec succès !"
   });
 };
 
-
 // =====================================================
 // INTERN - DELETE TACHE
 // =====================================================
-
 export const deleteTachebyIntern = async (req, res) => {
 
   const { tacheId } = req.params;
@@ -482,27 +569,51 @@ export const deleteTachebyIntern = async (req, res) => {
     error.statusCode = 403;
     throw error;
   }
-const tache=await Taches.findById(tacheId);
-if(!tache){
+
+  const tache = await Taches.findById(tacheId);
+
+  if (!tache) {
     const error = new Error(
-      "La tache n'existe meme pas!" 
+      "La tache n'existe meme pas!"
     );
-    error.statusCode = 403;
+    error.statusCode = 404;
     throw error;
   }
+
   await Taches.delete(tacheId);
 
+  // ==========================================
+  // NOTIFICATION AU SUPERVISEUR
+  // ==========================================
+
+/*  const supervisorData = await supervisor.findById(
+  tache.supervisor_id
+);
+
+await Taches.delete(tacheId);
+
+if (supervisorData) {
+
+  const notification = await createNotification({
+    user_id: supervisorData.user_id,
+    title: "Tâche supprimée",
+    message: `Votre stagiaire a supprimé la tâche "${tache.title}".`,
+    type: "TASK",
+  });
+
+  emitNotification(
+    supervisorData.user_id,
+    notification
+  );
+}*/
   return res.status(200).json({
     success: true,
     message: "La tâche est supprimée avec succès !"
   });
 };
-
-
 // =====================================================
 // SUPERVISOR - CREATE ACTIVITY
 // =====================================================
-
 export const createActivity = async (req, res) => {
 
   const companyId = req.supervisorInfo?.company_id;
@@ -529,10 +640,8 @@ export const createActivity = async (req, res) => {
     title,
     description,
     interns,
-    priority,
     end_date
   } = req.body;
-
 
   const activity = await Activities.create({
     company_id: companyId,
@@ -543,16 +652,37 @@ export const createActivity = async (req, res) => {
     end_date: end_date
   });
 
+  //  Notification aux stagiaires
+  const internNames = interns
+    .split(",")
+    .map(name => name.trim())
+    .filter(Boolean);
+
+  for (const internName of internNames) {
+
+    const internData = await Intern.findByName(internName);
+if (internData) {
+
+  const notification = await createNotification({
+    user_id: internData.user_id,
+    title: "Nouvelle activité",
+    message: `Votre superviseur vous a ajouté à l'activité "${title}".`,
+    type: "ACTIVITY",
+  });
+
+  emitNotification(
+    internData.user_id,
+    notification
+  );
+}
+  }
+
   return res.status(201).json({
     success: true,
     activity
   });
 };
 
-
-// =====================================================
-// SUPERVISOR - UPDATE ACTIVITY
-// =====================================================
 
 export const updateActivity = async (req, res) => {
 
@@ -593,26 +723,48 @@ export const updateActivity = async (req, res) => {
     throw error;
   }
 
+  const updatedInterns = interns ?? activity.interns;
+  const updatedTitle = title ?? activity.title;
+
   await Activities.update(activityId, {
     company_id: companyId,
     supervisor_id: supervisorId,
-    interns: interns ?? activity.interns,
-    title: title ?? activity.title,
+    interns: updatedInterns,
+    title: updatedTitle,
     description: description ?? activity.description,
     end_date: end_date ?? activity.end_date
   });
+
+  //  Notification aux stagiaires
+  const internNames = updatedInterns
+    .split(",")
+    .map(name => name.trim())
+    .filter(Boolean);
+
+  for (const internName of internNames) {
+
+    const internData = await Intern.findByName(internName);
+if (internData) {
+
+  const notification = await createNotification({
+    user_id: internData.user_id,
+    title: "Activité modifiée",
+    message: `Votre superviseur a modifié l'activité "${updatedTitle}".`,
+    type: "ACTIVITY",
+  });
+
+  emitNotification(
+    internData.user_id,
+    notification
+  );
+}
+  }
 
   return res.status(200).json({
     success: true,
     message: "L'activité est modifiée avec succès !"
   });
 };
-
-
-// =====================================================
-// SUPERVISOR - DELETE ACTIVITY
-// =====================================================
-
 export const deleteActivity = async (req, res) => {
 
   const { activityId } = req.params;
@@ -636,15 +788,45 @@ export const deleteActivity = async (req, res) => {
     error.statusCode = 403;
     throw error;
   }
-const activity= await Activities.findById(activityId);
-if(!activity){
+
+  const activity = await Activities.findById(activityId);
+
+  if (!activity) {
     const error = new Error(
-      "L'activité n'existe meme pas!" 
+      "L'activité n'existe même pas !"
     );
-    error.statusCode = 403;
+    error.statusCode = 404;
     throw error;
-  }  
-await Activities.delete(activityId);
+  }
+
+  //  On récupère les stagiaires AVANT de supprimer
+  const internNames = activity.interns
+    .split(",")
+    .map(name => name.trim())
+    .filter(Boolean);
+
+  await Activities.delete(activityId);
+
+  //  Notification aux stagiaires
+  for (const internName of internNames) {
+
+  const internData = await Intern.findByName(internName);
+
+  if (internData) {
+
+    const notification = await createNotification({
+      user_id: internData.user_id,
+      title: "Activité supprimée",
+      message: `Votre superviseur a supprimé l'activité "${activity.title}".`,
+      type: "ACTIVITY",
+    });
+
+    emitNotification(
+      internData.user_id,
+      notification
+    );
+  }
+}
 
   return res.status(200).json({
     success: true,

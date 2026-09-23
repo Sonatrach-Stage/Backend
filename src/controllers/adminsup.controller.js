@@ -1,128 +1,206 @@
 import Company from "../models/companymodel.js";
 import User from "../models/usermodel.js";
+import { createNotification } from "../utils/notification.js";
+import { emitNotification } from "../utils/notificationSocket.js";
 
-export const getAllCompanies = async (req, res, next) => {
-  try {
-    const companies = await Company.findAll();
+// =====================================================
+// GET ALL COMPANIES
+// Récupérer toutes les entreprises
+// =====================================================
 
-    res.status(200).json({
-      success: true,
-      companies,
-    });
-  } catch (error) {
-    next(error);
-  }
+export const getAllCompanies = async (req, res) => {
+  const companies = await Company.findAll();
+
+  return res.status(200).json({
+    success: true,
+    companies,
+  });
 };
 
+// =====================================================
+// GET PENDING COMPANIES
+// Récupérer les entreprises en attente
+// =====================================================
 
-export const getPendingCompanies = async (req, res, next) => {
-  try {
-    const companies = await Company.findPending();
+export const getPendingCompanies = async (req, res) => {
+  const companies = await Company.findPending();
 
-    res.status(200).json({
-      success: true,
-      companies,
-    });
-  } catch (error) {
-    next(error);
-  }
+  return res.status(200).json({
+    success: true,
+    companies,
+  });
 };
 
+// =====================================================
+// GET APPROVED COMPANIES
+// Récupérer les entreprises approuvées
+// =====================================================
 
-export const getApprovedCompanies = async (req, res, next) => {
-  try {
-    const companies = await Company.findAllApproved();
+export const getApprovedCompanies = async (req, res) => {
+  const companies = await Company.findAllApproved();
 
-    res.status(200).json({
-      success: true,
-      companies,
-    });
-  } catch (error) {
-    next(error);
-  }
+  return res.status(200).json({
+    success: true,
+    companies,
+  });
 };
 
-export const approveCompany = async (req, res, next) => {
-  try {
-    const { id } = req.params;
+// =====================================================
+// APPROVE COMPANY
+// Approuver une entreprise
+// =====================================================
 
-    const company = await Company.findById(id);
+export const approveCompany = async (req, res) => {
+  const { id } = req.params;
 
-    if (!company) {
-      return res.status(404).json({
-        message: "Company not found",
-      });
-    }
+  // -----------------------------------------
+  // Vérifier que l'entreprise existe
+  // -----------------------------------------
 
-    if (company.company_status === "APPROVED") {
-      return res.status(400).json({
-        message: "Company is already approved",
-      });
-    }
+  const company = await Company.findById(id);
 
-    // Approuver l'entreprise
-    const updatedCompany = await Company.approve(id);
+  if (!company) {
+    const error = new Error("Company not found");
+    error.statusCode = 404;
+    throw error;
+  }
 
-    // Activer le compte du SECONDARY_ADMIN
-    if (company.user_id) {
-      await User.activate(company.user_id);
-    }
+  // -----------------------------------------
+  // Vérifier si elle est déjà approuvée
+  // -----------------------------------------
 
-    res.status(200).json({
-      success: true,
-      message: "Company approved successfully",
-      company: updatedCompany,
+  if (company.company_status === "APPROVED") {
+    const error = new Error("Company is already approved");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // -----------------------------------------
+  // Approuver l'entreprise
+  // -----------------------------------------
+
+  const updatedCompany = await Company.approve(id);
+
+  // -----------------------------------------
+  // Activer le SECONDARY_ADMIN
+  // -----------------------------------------
+
+  if (company.user_id) {
+    await User.activate(company.user_id);
+
+    // -----------------------------------------
+    // Créer la notification en DB
+    // -----------------------------------------
+
+    const notification = await createNotification({
+      user_id: company.user_id,
+      title: "Entreprise approuvée",
+      message:
+        "Votre entreprise a été approuvée. Votre compte administrateur est maintenant actif.",
+      type: "COMPANY",
     });
 
-  } catch (error) {
-    next(error);
+    // -----------------------------------------
+    // Envoyer la notification en temps réel
+    // -----------------------------------------
+
+    emitNotification(
+      company.user_id,
+      notification
+    );
   }
+
+  return res.status(200).json({
+    success: true,
+    message: "Company approved successfully",
+    company: updatedCompany,
+  });
 };
 
-export const rejectCompany = async (req, res, next) => {
-  try {
-    const { id } = req.params;
+// =====================================================
+// REJECT COMPANY
+// Refuser une entreprise
+// =====================================================
 
-    const company = await Company.findById(id);
+export const rejectCompany = async (req, res) => {
+  const { id } = req.params;
 
-    if (!company) {
-      return res.status(404).json({
-        message: "Company not found",
-      });
-    }
+  // -----------------------------------------
+  // Vérifier que l'entreprise existe
+  // -----------------------------------------
 
-    const updatedCompany = await Company.reject(id);
+  const company = await Company.findById(id);
 
-    res.status(200).json({
-      success: true,
-      message: "Company rejected successfully",
-      company: updatedCompany,
-    });
-  } catch (error) {
-    next(error);
+  if (!company) {
+    const error = new Error("Company not found");
+    error.statusCode = 404;
+    throw error;
   }
+
+  // -----------------------------------------
+  // Refuser l'entreprise
+  // -----------------------------------------
+
+  const updatedCompany = await Company.reject(id);
+
+  // -----------------------------------------
+  // Notification au SECONDARY_ADMIN
+  // -----------------------------------------
+
+  if (company.user_id) {
+    const notification = await createNotification({
+      user_id: company.user_id,
+      title: "Entreprise refusée",
+      message:
+        "Votre demande d'inscription de l'entreprise a été refusée.",
+      type: "COMPANY",
+    });
+
+    // -----------------------------------------
+    // Envoyer en temps réel
+    // -----------------------------------------
+
+    emitNotification(
+      company.user_id,
+      notification
+    );
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Company rejected successfully",
+    company: updatedCompany,
+  });
 };
 
+// =====================================================
+// DELETE COMPANY
+// Supprimer une entreprise
+// =====================================================
 
-export const deleteCompany = async (req, res, next) => {
-  try {
-    const { id } = req.params;
+export const deleteCompany = async (req, res) => {
+  const { id } = req.params;
 
-    const company = await Company.findById(id);
+  // -----------------------------------------
+  // Vérifier que l'entreprise existe
+  // -----------------------------------------
 
-    if (!company) {
-      return res.status(404).json({
-        message: "Company not found",
-      });
-    }
+  const company = await Company.findById(id);
 
-    await Company.delete(id);
-
-    res.status(200).json({
-      success: true,
-      message: "Company deleted successfully",
-    });
-  } catch (error) {
-    next(error);
+  if (!company) {
+    const error = new Error("Company not found");
+    error.statusCode = 404;
+    throw error;
   }
+
+  // -----------------------------------------
+  // Supprimer l'entreprise
+  // -----------------------------------------
+
+  await Company.delete(id);
+
+  return res.status(200).json({
+    success: true,
+    message: "Company deleted successfully",
+  });
 };
