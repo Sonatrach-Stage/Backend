@@ -364,6 +364,22 @@ const options = {
           properties: {
             reason: { type: 'string', example: "Conflit d'agenda de dernière minute.", description: "Motif d'annulation, optionnel." }
           }
+        },
+
+        // ── Notifications ───────────────────────────────
+        Notification: {
+          type: 'object',
+          description:
+            "Schéma en LECTURE SEULE. Aucune route publique ne permet de créer une notification via body — Notification.create() n'est utilisé qu'en interne par le serveur (déclenché par d'autres actions, ex : nouvelle tâche, review, rendez-vous, etc.). Toutes les routes du groupe Notifications ci-dessous n'attendent AUCUN corps de requête.",
+          properties: {
+            id: { type: 'integer', example: 21 },
+            user_id: { type: 'integer', example: 12, description: "Destinataire de la notification (toujours égal à l'utilisateur connecté pour toutes les routes de lecture/écriture)." },
+            title: { type: 'string', example: 'Nouvelle tâche assignée' },
+            message: { type: 'string', example: 'Amine Boudiaf vous a assigné la tâche "Intégrer le module de paiement".' },
+            type: { type: 'string', example: 'TASK', description: "Catégorie libre définie par le code qui crée la notification (ex : TASK, DOCUMENT, APPOINTMENT, MESSAGE...). Pas de contrainte enum imposée en base d'après le modèle." },
+            is_read: { type: 'boolean', example: false },
+            created_at: { type: 'string', format: 'date-time', example: '2026-06-05T08:00:00.000Z' }
+          }
         }
       }
     },
@@ -378,6 +394,7 @@ const options = {
       { name: 'Profil' },
       { name: 'Documents' },
       { name: 'Appointments' },
+      { name: 'Notifications' },
     ],
     paths: {
 
@@ -2633,6 +2650,161 @@ const options = {
             400: { description: "Seul un rendez-vous ACCEPTED peut être marqué comme terminé" },
             403: { description: "L'utilisateur connecté ne participe pas à ce rendez-vous" },
             404: { description: 'Rendez-vous introuvable' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // NOTIFICATIONS
+      // Toutes les routes nécessitent : protect uniquement.
+      // Aucune route n'attend de body — le destinataire est
+      // toujours req.user.id (déduit du token), jamais du body.
+      // ══════════════════════════════════════════════
+      '/notifications': {
+        get: {
+          tags: ['Notifications'],
+          summary: 'Mes notifications',
+          description: "Protégé par protect. Retourne TOUTES les notifications (lues et non lues) de l'utilisateur connecté, triées par created_at décroissant. Aucun paramètre, aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des notifications',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    notifications: [
+                      { id: 21, user_id: 12, title: 'Nouvelle tâche assignée', message: 'Amine Boudiaf vous a assigné la tâche "Intégrer le module de paiement".', type: 'TASK', is_read: false, created_at: '2026-06-05T08:00:00.000Z' },
+                      { id: 18, user_id: 12, title: 'Document évalué', message: 'Votre document "Rapport de stage - Semaine 1" a été approuvé.', type: 'DOCUMENT', is_read: true, created_at: '2026-06-03T15:00:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' }
+          }
+        }
+      },
+      '/notifications/unread': {
+        get: {
+          tags: ['Notifications'],
+          summary: 'Mes notifications non lues',
+          description: "Protégé par protect. Retourne uniquement les notifications où is_read = FALSE pour l'utilisateur connecté, triées par created_at décroissant. Aucun paramètre, aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des notifications non lues',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    notifications: [
+                      { id: 21, user_id: 12, title: 'Nouvelle tâche assignée', message: 'Amine Boudiaf vous a assigné la tâche "Intégrer le module de paiement".', type: 'TASK', is_read: false, created_at: '2026-06-05T08:00:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' }
+          }
+        }
+      },
+      '/notifications/unread/count': {
+        get: {
+          tags: ['Notifications'],
+          summary: 'Compter mes notifications non lues',
+          description: "Protégé par protect. Retourne uniquement un compteur entier (COUNT SQL converti en Number), pratique pour un badge de notification. Aucun paramètre, aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Nombre de notifications non lues',
+              content: {
+                'application/json': {
+                  example: { success: true, count: 3 }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' }
+          }
+        }
+      },
+      '/notifications/read-all': {
+        patch: {
+          tags: ['Notifications'],
+          summary: 'Marquer toutes mes notifications comme lues',
+          description:
+            "Protégé par protect. Aucun body attendu. Passe is_read à TRUE pour toutes les notifications de l'utilisateur connecté dont is_read était FALSE, et renvoie la liste des notifications ainsi mises à jour (celles déjà lues avant l'appel ne sont pas incluses dans le tableau retourné).",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Notifications marquées comme lues',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Toutes les notifications ont été marquées comme lues.',
+                    notifications: [
+                      { id: 21, user_id: 12, title: 'Nouvelle tâche assignée', is_read: true }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié' }
+          }
+        }
+      },
+      '/notifications/{notificationId}/read': {
+        patch: {
+          tags: ['Notifications'],
+          summary: 'Marquer une notification comme lue',
+          description:
+            "Protégé par protect. Aucun body attendu. La mise à jour est scopée à user_id = utilisateur connecté (WHERE id = ... AND user_id = ...) : impossible de marquer comme lue la notification d'un autre utilisateur — dans ce cas la requête ne trouve aucune ligne et renvoie 404, exactement comme si la notification n'existait pas.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'notificationId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Notification ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Notification marquée comme lue',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Notification marquée comme lue.',
+                    notification: { id: 21, user_id: 12, title: 'Nouvelle tâche assignée', is_read: true }
+                  }
+                }
+              }
+            },
+            404: { description: "Notification introuvable, ou n'appartient pas à l'utilisateur connecté" }
+          }
+        }
+      },
+      '/notifications/{notificationId}': {
+        delete: {
+          tags: ['Notifications'],
+          summary: 'Supprimer une notification',
+          description:
+            "Protégé par protect. Aucun body attendu. La suppression est scopée à user_id = utilisateur connecté (WHERE id = ... AND user_id = ...) : impossible de supprimer la notification d'un autre utilisateur (404 dans ce cas, comme si elle n'existait pas).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'notificationId', in: 'path', required: true, schema: { type: 'integer' }, description: 'Notification ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Notification supprimée',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    message: 'Notification supprimée.',
+                    notification: { id: 21, user_id: 12, title: 'Nouvelle tâche assignée', message: 'Amine Boudiaf vous a assigné la tâche "Intégrer le module de paiement".', type: 'TASK', is_read: false, created_at: '2026-06-05T08:00:00.000Z' }
+                  }
+                }
+              }
+            },
+            404: { description: "Notification introuvable, ou n'appartient pas à l'utilisateur connecté" }
           }
         }
       }
