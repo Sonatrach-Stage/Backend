@@ -2824,8 +2824,7 @@ const options = {
           tags: ['Statistiques'],
           summary: 'Statistiques globales de la plateforme (vue Super Admin)',
           description:
-            "Protégé par protect uniquement. ⚠️ ATTENTION : contrairement aux 3 autres routes de ce groupe, le contrôleur ne vérifie AUCUN rôle particulier (pas de restrictTo, et aucune vérification de req.adminInfo/req.supervisorInfo/req.internInfo dans le code) : tout utilisateur possédant un access token valide peut donc appeler cette route, quel que soit son rôle réel. Aucun paramètre, aucun body attendu. " +
-            "Agrège en parallèle (Promise.all) : compteurs globaux, entreprises par statut, stagiaires par type et par statut, tâches par statut et par priorité, rendez-vous par statut, documents par statut et par type, croissance de la plateforme (par mois) et activité de la plateforme (par jour).",
+            "lacces est juste pour ladmin sup de lapplication",
           security: [{ bearerAuth: [] }],
           responses: {
             200: {

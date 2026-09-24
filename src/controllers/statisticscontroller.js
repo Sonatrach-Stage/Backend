@@ -1,7 +1,25 @@
 import Statistics from "../models/statisticsmodel.js";
 
 export const getAdminStatistics = async (req, res) => {
+// Vérifier que l'utilisateur est bien un admin
+  if (!req.adminInfo) {
+    const error = new Error(
+      "Accès réservé aux administrateurs ."
+    );
 
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Vérifier que c'est le SUPER_ADMIN
+  if (req.adminInfo.type !== "super") {
+    const error = new Error(
+      "Accès réservé au SUPER_ADMIN."
+    );
+
+    error.statusCode = 403;
+    throw error;
+  }
 const [
 globalCounts,
 companiesByStatus,
