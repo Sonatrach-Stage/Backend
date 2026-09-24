@@ -395,6 +395,7 @@ const options = {
       { name: 'Documents' },
       { name: 'Appointments' },
       { name: 'Notifications' },
+      { name: 'Statistiques' },
     ],
     paths: {
 
@@ -2805,6 +2806,231 @@ const options = {
               }
             },
             404: { description: "Notification introuvable, ou n'appartient pas à l'utilisateur connecté" }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // STATISTIQUES
+      // Toutes les routes nécessitent : protect uniquement.
+      // AUCUNE route n'attend de body (GET uniquement, aucun
+      // paramètre query ni path) — le rôle et le périmètre
+      // (entreprise / encadrant / stagiaire) sont déduits
+      // exclusivement du token via req.adminInfo / req.supervisorInfo
+      // / req.internInfo.
+      // ══════════════════════════════════════════════
+      '/statistics/adminsup': {
+        get: {
+          tags: ['Statistiques'],
+          summary: 'Statistiques globales de la plateforme (vue Super Admin)',
+          description:
+            "Protégé par protect uniquement. ⚠️ ATTENTION : contrairement aux 3 autres routes de ce groupe, le contrôleur ne vérifie AUCUN rôle particulier (pas de restrictTo, et aucune vérification de req.adminInfo/req.supervisorInfo/req.internInfo dans le code) : tout utilisateur possédant un access token valide peut donc appeler cette route, quel que soit son rôle réel. Aucun paramètre, aucun body attendu. " +
+            "Agrège en parallèle (Promise.all) : compteurs globaux, entreprises par statut, stagiaires par type et par statut, tâches par statut et par priorité, rendez-vous par statut, documents par statut et par type, croissance de la plateforme (par mois) et activité de la plateforme (par jour).",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Statistiques globales récupérées',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    statistics: {
+                      globalCounts: {
+                        total_companies: '12', approved_companies: '9', pending_companies: '2', rejected_companies: '1',
+                        total_interns: '48', total_supervisors: '15', total_pfe: '30', total_pfc: '18',
+                        total_tasks: '210', total_documents: '95', total_appointments: '37'
+                      },
+                      companiesByStatus: [
+                        { status: 'APPROVED', count: '9' }, { status: 'pending', count: '2' }, { status: 'rejected', count: '1' }
+                      ],
+                      internsByType: [
+                        { type: 'intern_PFE', count: '30' }, { type: 'intern_PFC', count: '18' }
+                      ],
+                      internsByStatus: [
+                        { status: 'active', count: '40' }, { status: 'waiting', count: '8' }
+                      ],
+                      tasksByStatus: [
+                        { status: 'in progress', count: '120' }, { status: 'done', count: '90' }
+                      ],
+                      tasksByPriority: [
+                        { priority: 'high', count: '80' }, { priority: 'medium', count: '90' }, { priority: 'low', count: '40' }
+                      ],
+                      appointmentsByStatus: [
+                        { status: 'ACCEPTED', count: '20' }, { status: 'PENDING', count: '10' }, { status: 'COMPLETED', count: '7' }
+                      ],
+                      documentsByStatus: [
+                        { status: 'APPROVED', count: '60' }, { status: 'PENDING', count: '25' }, { status: 'REVISION_REQUIRED', count: '10' }
+                      ],
+                      documentsByType: [
+                        { type: 'rapport_hebdomadaire', count: '70' }, { type: 'rapport_final', count: '25' }
+                      ],
+                      platformGrowth: [
+                        { month: '2026-04-01T00:00:00.000Z', companies: '2', interns: '10', supervisors: '3' },
+                        { month: '2026-05-01T00:00:00.000Z', companies: '3', interns: '15', supervisors: '5' }
+                      ],
+                      platformActivity: [
+                        { activity_date: '2026-06-01', tasks: '5', documents: '2', appointments: '1' },
+                        { activity_date: '2026-06-02', tasks: '3', documents: '4', appointments: '0' }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            401: { description: 'Non authentifié (token manquant ou invalide)' }
+          }
+        }
+      },
+      '/statistics/admin-secondary': {
+        get: {
+          tags: ['Statistiques'],
+          summary: "Statistiques de l'entreprise (vue Admin Secondaire)",
+          description:
+            "Protégé par protect uniquement (pas de restrictTo, mais le contrôleur vérifie explicitement req.adminInfo?.company_id ; 403 si absent). Toutes les statistiques sont scopées à l'entreprise de l'admin secondaire connecté (company_id). Aucun paramètre, aucun body attendu. " +
+            "Agrège en parallèle : compteurs de l'entreprise (stagiaires, encadrants, tâches, documents, rendez-vous), stagiaires par statut et par type, tâches par statut et par priorité, documents par statut, rendez-vous par statut, charge de travail par encadrant (nombre de stagiaires assignés), et croissance des stages par mois.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: "Statistiques de l'entreprise récupérées",
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    statistics: {
+                      companyCounts: {
+                        total_interns: '14', waiting_interns: '2', assigned_interns: '11',
+                        total_supervisors: '4', total_pfe: '9', total_pfc: '5',
+                        total_tasks: '52', total_documents: '30', total_appointments: '12'
+                      },
+                      internsByStatus: [
+                        { status: 'active', count: '11' }, { status: 'waiting', count: '2' }
+                      ],
+                      internsByType: [
+                        { type: 'intern_PFE', count: '9' }, { type: 'intern_PFC', count: '5' }
+                      ],
+                      tasksByStatus: [
+                        { status: 'in progress', count: '30' }, { status: 'done', count: '22' }
+                      ],
+                      tasksByPriority: [
+                        { priority: 'high', count: '20' }, { priority: 'medium', count: '22' }, { priority: 'low', count: '10' }
+                      ],
+                      documentsByStatus: [
+                        { status: 'APPROVED', count: '18' }, { status: 'PENDING', count: '12' }
+                      ],
+                      appointmentsByStatus: [
+                        { status: 'ACCEPTED', count: '7' }, { status: 'PENDING', count: '5' }
+                      ],
+                      supervisorWorkload: [
+                        { supervisor_id: 3, supervisor_name: 'Amine Boudiaf', intern_count: '5' },
+                        { supervisor_id: 7, supervisor_name: 'Sofiane Khaldi', intern_count: '4' }
+                      ],
+                      internshipGrowth: [
+                        { month: '2026-05-01T00:00:00.000Z', interns: '4' },
+                        { month: '2026-06-01T00:00:00.000Z', interns: '7' }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer votre entreprise (req.adminInfo.company_id absent) — token d'un rôle autre qu'admin secondaire, ou profil admin secondaire incomplet" }
+          }
+        }
+      },
+      '/statistics/supervisor': {
+        get: {
+          tags: ['Statistiques'],
+          summary: "Statistiques de l'encadrant connecté",
+          description:
+            "Protégé par protect uniquement (le contrôleur vérifie explicitement req.supervisorInfo?.id ; 403 si absent). Toutes les statistiques sont scopées à l'encadrant connecté. Aucun paramètre, aucun body attendu. " +
+            "Agrège en parallèle : compteurs de l'encadrant (stagiaires, tâches, activités, documents, rendez-vous), stagiaires par statut et par type, tâches par statut et par priorité, documents par statut, rendez-vous par statut, et activités par mois.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: "Statistiques de l'encadrant récupérées",
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    statistics: {
+                      supervisorCounts: {
+                        total_interns: '5', active_interns: '4', total_tasks: '18',
+                        total_activities: '6', total_documents: '10', total_appointments: '3'
+                      },
+                      internsByStatus: [
+                        { status: 'supervisor_assigned', count: '4' }, { status: 'waiting', count: '1' }
+                      ],
+                      internsByType: [
+                        { type: 'intern_PFE', count: '3' }, { type: 'intern_PFC', count: '2' }
+                      ],
+                      tasksByStatus: [
+                        { status: 'in progress', count: '10' }, { status: 'done', count: '8' }
+                      ],
+                      tasksByPriority: [
+                        { priority: 'high', count: '6' }, { priority: 'medium', count: '8' }, { priority: 'low', count: '4' }
+                      ],
+                      documentsByStatus: [
+                        { status: 'APPROVED', count: '6' }, { status: 'PENDING', count: '4' }
+                      ],
+                      appointmentsByStatus: [
+                        { status: 'ACCEPTED', count: '2' }, { status: 'PENDING', count: '1' }
+                      ],
+                      activities: [
+                        { month: '2026-05-01T00:00:00.000Z', activities: '3' },
+                        { month: '2026-06-01T00:00:00.000Z', activities: '3' }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer votre profil superviseur (req.supervisorInfo.id absent) — token d'un rôle autre qu'encadrant" }
+          }
+        }
+      },
+      '/statistics/intern': {
+        get: {
+          tags: ['Statistiques'],
+          summary: 'Statistiques du stagiaire connecté',
+          description:
+            "Protégé par protect uniquement (le contrôleur vérifie explicitement req.internInfo?.id ; 403 si absent). Toutes les statistiques sont scopées au stagiaire connecté. Aucun paramètre, aucun body attendu. " +
+            "Agrège en parallèle : compteurs du stagiaire (tâches totales/terminées, documents, rendez-vous), tâches par statut et par priorité, documents par statut et par type, rendez-vous par statut, et progression du stage (dates de début/fin, statut, type de stage).",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Statistiques du stagiaire récupérées',
+              content: {
+                'application/json': {
+                  example: {
+                    success: true,
+                    statistics: {
+                      internCounts: {
+                        total_tasks: '9', completed_tasks: '5', total_documents: '4', total_appointments: '2'
+                      },
+                      tasksByStatus: [
+                        { status: 'done', count: '5' }, { status: 'in progress', count: '4' }
+                      ],
+                      tasksByPriority: [
+                        { priority: 'high', count: '3' }, { priority: 'medium', count: '4' }, { priority: 'low', count: '2' }
+                      ],
+                      documentsByStatus: [
+                        { status: 'APPROVED', count: '3' }, { status: 'PENDING', count: '1' }
+                      ],
+                      documentsByType: [
+                        { type: 'rapport_hebdomadaire', count: '3' }, { type: 'rapport_final', count: '1' }
+                      ],
+                      appointmentsByStatus: [
+                        { status: 'ACCEPTED', count: '1' }, { status: 'PENDING', count: '1' }
+                      ],
+                      progress: {
+                        start_date: '2026-06-01', end_date: '2026-09-01', status: 'active', intern_type: 'intern_PFE'
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            403: { description: "Impossible de déterminer votre profil stagiaire (req.internInfo.id absent) — token d'un rôle autre que stagiaire" }
           }
         }
       }
