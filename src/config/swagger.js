@@ -380,6 +380,40 @@ const options = {
             is_read: { type: 'boolean', example: false },
             created_at: { type: 'string', format: 'date-time', example: '2026-06-05T08:00:00.000Z' }
           }
+        },
+
+        // ── AI ───────────────────────────────────────────
+        AskAI: {
+          type: 'object',
+          required: ['question'],
+          description:
+            "Accessible uniquement aux STAGIAIRES et ENCADRANTS (company_id dérivé de req.internInfo?.company_id || req.supervisorInfo?.company_id ; 403 pour tout autre rôle, y compris les admins). " +
+            "Le RAG interroge uniquement les documents de l'entreprise de l'utilisateur connecté.",
+          properties: {
+            question: {
+              type: 'string',
+              example: "Quel est le statut d'avancement du projet de gestion des stages ?",
+              description: "Obligatoire. Refusée si vide ou composée uniquement d'espaces (400)."
+            },
+            conversationId: {
+              type: 'integer',
+              example: 14,
+              description:
+                "Optionnel. Si fourni, la question est ajoutée à une conversation existante — celle-ci doit appartenir à l'utilisateur connecté (403 sinon), et exister (404 sinon). " +
+                "Si omis, une NOUVELLE conversation est automatiquement créée, avec pour titre les 80 premiers caractères de la question."
+            }
+          }
+        },
+        CompareProjects: {
+          type: 'object',
+          required: ['documentId1', 'documentId2'],
+          description:
+            "Accessible uniquement aux STAGIAIRES et ENCADRANTS (même règle de company_id que /ai/ask). " +
+            "Les deux documents comparés doivent appartenir à la même entreprise que l'utilisateur connecté (vérifié dans le service compareProjects).",
+          properties: {
+            documentId1: { type: 'integer', example: 9, description: "ID du premier document. Obligatoire." },
+            documentId2: { type: 'integer', example: 12, description: "ID du second document. Obligatoire et doit être DIFFÉRENT de documentId1 (sinon 400)." }
+          }
         }
       }
     },
@@ -396,6 +430,7 @@ const options = {
       { name: 'Appointments' },
       { name: 'Notifications' },
       { name: 'Statistiques' },
+      { name: 'AI' },
     ],
     paths: {
 
@@ -2824,7 +2859,8 @@ const options = {
           tags: ['Statistiques'],
           summary: 'Statistiques globales de la plateforme (vue Super Admin)',
           description:
-            "lacces est juste pour ladmin sup de lapplication",
+            "Protégé par protect uniquement. ⚠️ ATTENTION : contrairement aux 3 autres routes de ce groupe, le contrôleur ne vérifie AUCUN rôle particulier (pas de restrictTo, et aucune vérification de req.adminInfo/req.supervisorInfo/req.internInfo dans le code) : tout utilisateur possédant un access token valide peut donc appeler cette route, quel que soit son rôle réel. Aucun paramètre, aucun body attendu. " +
+            "Agrège en parallèle (Promise.all) : compteurs globaux, entreprises par statut, stagiaires par type et par statut, tâches par statut et par priorité, rendez-vous par statut, documents par statut et par type, croissance de la plateforme (par mois) et activité de la plateforme (par jour).",
           security: [{ bearerAuth: [] }],
           responses: {
             200: {
@@ -3030,6 +3066,239 @@ const options = {
               }
             },
             403: { description: "Impossible de déterminer votre profil stagiaire (req.internInfo.id absent) — token d'un rôle autre que stagiaire" }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // AI — ASSISTANT RAG, RÉSUMÉS, COMPARAISON DE PROJETS
+      // Toutes les routes nécessitent : protect uniquement.
+      // Accès réservé aux STAGIAIRES et ENCADRANTS : le
+      // companyId est dérivé de req.internInfo?.company_id
+      // OU req.supervisorInfo?.company_id. Tout autre rôle
+      // (admin secondaire, super admin) reçoit un 403, faute
+      // de company_id détecté par ce contrôleur.
+      // ══════════════════════════════════════════════
+      '/ai/ask': {
+        post: {
+          tags: ['AI'],
+          summary: "Poser une question à l'assistant IA (RAG)",
+          description:
+            "Protégé par protect uniquement. Réservé aux stagiaires et encadrants (403 si companyId indéterminé). " +
+            "Le RAG (Retrieval-Augmented Generation) interroge la base documentaire de l'entreprise de l'utilisateur connecté, en tenant compte de l'historique des 10 derniers messages de la conversation (s'il y en a une). " +
+            "Chaque appel enregistre à la fois le message utilisateur et la réponse de l'IA dans la conversation, puis met à jour son timestamp.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AskAI' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Réponse générée',
+              content: {
+                'application/json': {
+                  example: {
+                    conversation: { id: 14, title: "Quel est le statut d'avancement du projet de gestion des..." },
+                    answer: "D'après les documents disponibles, le module d'authentification est terminé et le module de paiement est en cours d'intégration (tâche assignée à Katia Benali, échéance 15 juin 2026).",
+                    sources: [
+                      { document_id: 9, title: 'Rapport de stage - Semaine 1', excerpt: '...' }
+                    ]
+                  }
+                }
+              }
+            },
+            400: { description: 'La question est manquante ou vide' },
+            401: { description: 'Utilisateur non authentifié' },
+            403: { description: "Impossible de déterminer votre entreprise (ni stagiaire ni encadrant), ou la conversation indiquée n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'conversationId fourni mais introuvable' }
+          }
+        }
+      },
+      '/ai/documents/{id}/summary': {
+        post: {
+          tags: ['AI'],
+          summary: "Générer le résumé IA d'un document",
+          description:
+            "Protégé par protect uniquement. Réservé aux stagiaires et encadrants (403 si companyId indéterminé). Aucun body attendu — l'ID du document est passé en paramètre d'URL. " +
+            "Le document doit appartenir à la même entreprise que l'utilisateur connecté (vérifié dans le service summarizeDocument).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Résumé généré',
+              content: {
+                'application/json': {
+                  example: {
+                    documentId: 9,
+                    title: 'Rapport de stage - Semaine 1',
+                    summary: "Ce document présente les tâches réalisées durant la première semaine de stage, avec un focus sur l'intégration du module de paiement Stripe.",
+                    keyPoints: [
+                      'Mise en place du checkout Stripe',
+                      'Tests unitaires du module de paiement',
+                      'Bug mineur identifié sur mobile'
+                    ]
+                  }
+                }
+              }
+            },
+            400: { description: "L'identifiant du document est manquant" },
+            401: { description: 'Utilisateur non authentifié' },
+            403: { description: 'Impossible de déterminer votre entreprise (ni stagiaire ni encadrant)' },
+            404: { description: "Document introuvable ou n'appartenant pas à l'entreprise de l'utilisateur (selon l'implémentation du service)" }
+          }
+        }
+      },
+      '/ai/documents/{id}/similar': {
+        get: {
+          tags: ['AI'],
+          summary: 'Trouver des projets/documents similaires',
+          description:
+            "Protégé par protect uniquement. Réservé aux stagiaires et encadrants (403 si companyId indéterminé). Aucun body attendu — l'ID du document est passé en paramètre d'URL. " +
+            "Retourne jusqu'à 5 documents similaires (limite codée en dur côté serveur) au sein de la même entreprise.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Document ID de référence' }
+          ],
+          responses: {
+            200: {
+              description: 'Documents similaires trouvés',
+              content: {
+                'application/json': {
+                  example: {
+                    documentId: 9,
+                    similarProjects: [
+                      { document_id: 22, title: 'Rapport de stage - Intégration paiement V2', similarity_score: 0.87 },
+                      { document_id: 31, title: 'Étude de faisabilité module Stripe', similarity_score: 0.79 }
+                    ]
+                  }
+                }
+              }
+            },
+            400: { description: "L'identifiant du document est manquant" },
+            401: { description: 'Utilisateur non authentifié' },
+            403: { description: 'Impossible de déterminer votre entreprise (ni stagiaire ni encadrant)' }
+          }
+        }
+      },
+      '/ai/documents/compare': {
+        post: {
+          tags: ['AI'],
+          summary: 'Comparer deux documents/projets via IA',
+          description:
+            "Protégé par protect uniquement. Réservé aux stagiaires et encadrants (403 si companyId indéterminé). " +
+            "documentId1 et documentId2 sont convertis en Number avant l'appel au service ; ils doivent être différents (400 sinon) et appartenir à l'entreprise de l'utilisateur connecté.",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CompareProjects' }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Comparaison générée',
+              content: {
+                'application/json': {
+                  example: {
+                    document1: { id: 9, title: 'Rapport de stage - Semaine 1' },
+                    document2: { id: 12, title: 'Rapport de stage - Semaine 2' },
+                    comparison: "Les deux documents couvrent le même projet de module de paiement, mais le second inclut des tests d'intégration supplémentaires et corrige le bug de pagination mobile mentionné dans le premier.",
+                    similarities: ['Même module (paiement Stripe)', 'Même stagiaire'],
+                    differences: ['Le second document ajoute des tests E2E', 'Statut différent : PENDING vs APPROVED']
+                  }
+                }
+              }
+            },
+            400: { description: 'documentId1 ou documentId2 manquant, ou les deux identifiants sont identiques' },
+            401: { description: 'Utilisateur non authentifié' },
+            403: { description: 'Impossible de déterminer votre entreprise (ni stagiaire ni encadrant)' }
+          }
+        }
+      },
+
+      // ══════════════════════════════════════════════
+      // AI — CONVERSATIONS
+      // ══════════════════════════════════════════════
+      '/ai/conversations': {
+        get: {
+          tags: ['AI'],
+          summary: 'Liste de mes conversations IA',
+          description: "Protégé par protect uniquement (accessible à tout utilisateur authentifié, pas seulement stagiaire/encadrant — aucune vérification de companyId ici). Aucun body attendu. Retourne toutes les conversations de l'utilisateur connecté.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: {
+              description: 'Liste des conversations',
+              content: {
+                'application/json': {
+                  example: {
+                    conversations: [
+                      { id: 14, user_id: 12, title: "Quel est le statut d'avancement du projet de gestion des...", created_at: '2026-06-05T08:00:00.000Z', updated_at: '2026-06-05T08:05:00.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Utilisateur non authentifié' }
+          }
+        }
+      },
+      '/ai/conversations/{id}': {
+        get: {
+          tags: ['AI'],
+          summary: 'Détails d\'une conversation + ses messages',
+          description: "Protégé par protect uniquement. La conversation doit appartenir à l'utilisateur connecté (403 sinon). Aucun body attendu.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Conversation ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Conversation et messages récupérés',
+              content: {
+                'application/json': {
+                  example: {
+                    conversation: { id: 14, title: "Quel est le statut d'avancement du projet de gestion des...", created_at: '2026-06-05T08:00:00.000Z', updated_at: '2026-06-05T08:05:00.000Z' },
+                    messages: [
+                      { id: 1, conversation_id: 14, role: 'user', content: "Quel est le statut d'avancement du projet de gestion des stages ?", created_at: '2026-06-05T08:00:00.000Z' },
+                      { id: 2, conversation_id: 14, role: 'assistant', content: "D'après les documents disponibles, le module d'authentification est terminé...", created_at: '2026-06-05T08:00:05.000Z' }
+                    ]
+                  }
+                }
+              }
+            },
+            401: { description: 'Utilisateur non authentifié' },
+            403: { description: "Cette conversation n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Conversation introuvable' }
+          }
+        },
+        delete: {
+          tags: ['AI'],
+          summary: 'Supprimer une conversation IA',
+          description: "Protégé par protect uniquement. La conversation doit appartenir à l'utilisateur connecté (403 sinon). Aucun body attendu. Supprime également, selon le modèle, les messages associés (à vérifier au niveau de la contrainte FK / du modèle AIConversation.delete).",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: 'Conversation ID' }
+          ],
+          responses: {
+            200: {
+              description: 'Conversation supprimée',
+              content: {
+                'application/json': {
+                  example: { message: 'Conversation supprimée avec succès.' }
+                }
+              }
+            },
+            401: { description: 'Utilisateur non authentifié' },
+            403: { description: "Cette conversation n'appartient pas à l'utilisateur connecté" },
+            404: { description: 'Conversation introuvable' }
           }
         }
       }

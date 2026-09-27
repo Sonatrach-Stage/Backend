@@ -16,7 +16,8 @@ import Intern from "../models/internmodel.js";
 
 import { createNotification } from "../utils/notification.js";
 import { emitNotification } from "../utils/notificationSocket.js";
-
+import { createChunks } from "../utils/chunker.js";
+ import { indexDocumentChunks } from "../services/ai/embeddingIndexService.js";
 
 // =====================================================
 // CREATE DOCUMENT
@@ -305,6 +306,17 @@ export const addDocumentVersion = async (req, res) => {
       uploaded_by: req.user.id
     });
 
+    // ==========================================
+// INDEXATION IA 
+// ==========================================
+
+    const chunks = createChunks(fileContent);
+
+await indexDocumentChunks({
+  documentId: id,
+  versionId: version.id,
+  chunks
+});
   // =====================================================
   // SUPPRIMER LE FICHIER TEMPORAIRE
   // =====================================================

@@ -14,6 +14,7 @@ import documentRoutes from "./routes/document.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import statisticsRoutes from "./routes/statisticsroutes.js";
+import aiRoutes from "./routes/ai.routes.js";
 const app = express();
 
 app.use(cors());
@@ -32,6 +33,7 @@ app.use("/documents", documentRoutes);
 app.use("/appointments", appointmentRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/statistics",statisticsRoutes);
+app.use("/ai",aiRoutes);
 swaggerSetup(app);
 app.get("/",(req,res)=>{
   res.json("the server of our project is running")

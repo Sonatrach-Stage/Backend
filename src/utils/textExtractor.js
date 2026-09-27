@@ -11,8 +11,7 @@ export const extractTextFromFile = async (filePath, mimetype) => {
 const result = await parser.getText();
 
 await parser.destroy();
-
-return result.text;
+return result.pages.map((page) => ({ pageNumber: page.num, text: page.text.trim(), }));
   }
 
   // DOCX
@@ -21,7 +20,7 @@ return result.text;
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     const result = await mammoth.extractRawText({ buffer });
-    return result.value;
+  return [ { pageNumber: null, text: result.value.trim(), }, ];
   }
 
   // DOC
@@ -35,8 +34,7 @@ return result.text;
     mimetype ===
       "application/vnd.openxmlformats-officedocument.presentationml.presentation"
   ) {
-    return "";
-  }
-
-  return "";
+  return []; 
+} 
+return [];
 };
