@@ -3,6 +3,7 @@ import Role from "../models/rolemodel.js";
 import supervisor from "../models/supervisormodel.js";
 import Intern from "../models/internmodel.js";
 import User from "../models/usermodel.js";
+import { uploadToCloudinary,deleteFromCloudinary } from "../utils/cloudinary.js";
 export const getMyProfile = async (req, res) => {
 
   try {

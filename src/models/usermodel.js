@@ -180,7 +180,22 @@ updatePassword: async (userId, hashedPassword) => {
 findByName: async(name)=>{
   const result = await pool.query("SELECT u.* FROM users u WHERE u.name=$1",[name]);
   return result.rows[0];
-}
+},
+updateProfileImage: async (userId, { profil_image, profil_image_public_id }) => {
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET
+      profil_image = $1,
+      profil_image_public_id = $2
+    WHERE id = $3
+    RETURNING id, profil_image, profil_image_public_id
+    `,
+    [profil_image, profil_image_public_id, userId]
+  );
+
+  return result.rows[0];
+},
 };
 
 export default User;

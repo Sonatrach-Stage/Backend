@@ -32,4 +32,11 @@ export const uploadToCloudinary = async (filePath, folder) => {
     resource_type: result.resource_type
   };
 };
+export const deleteFromCloudinary = async (publicId, resourceType = "image") => {
+  const result = await cloudinary.uploader.destroy(publicId, {
+    resource_type: resourceType,
+  });
+
+  return result;
+};
 export default cloudinary;
